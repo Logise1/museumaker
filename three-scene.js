@@ -673,5 +673,397 @@ function onCanvasMouseMove(event) {
             const y = (1 - uv.y) * canvas.height;
             context.lineTo(x, y);
             context.stroke();
-            texture.needs
+            texture.needsUpdate = true;
+        }
+    }
+}
+
+/**
+ * Maneja el evento de soltar el clic del ratón.
+ */
+function onCanvasMouseUp() {
+    // Finalizar arrastre de objeto.
+    if (!orbitControls.enabled && selectedObject) {
+        orbitControls.enabled = true; 
+        markAsDirty();
+    }
+    // Finalizar dibujo.
+    if (isDrawing) {
+        isDrawing = false;
+        document.getElementById('drawing-controls').classList.add('hidden');
+        const pathRef = push(ref(db, `museums/${getCurrentMuseumId()}/drawings/${activeDrawingCanvas.userData.canvasId}`));
+        set(pathRef, { color: currentDrawingColor, points: currentDrawingPath });
+        activeDrawingCanvas = null;
+    }
+}
+
+/**
+ * Selecciona un objeto en la escena, mostrando su caja de selección y actualizando el panel de información.
+ * @param {THREE.Object3D} object - El objeto a seleccionar.
+ */
+function selectObject(object) {
+    if (selectedObject === object) return;
+    selectedObject = object;
+    selectionBox.setFromObject(selectedObject, true);
+    selectionBox.visible = true;
+    updateInfoPanel(selectedObject);
+}
+
+/**
+ * Deselecciona cualquier objeto, ocultando la caja de selección y reseteando el panel.
+ */
+function deselectObject() {
+    if (selectedObject) {
+        selectedObject = null;
+        selectionBox.visible = false;
+        deselectObjectUI();
+    }
+}
+
+/**
+ * Actualiza las dimensiones de una sala y reposiciona las obras de arte en su interior.
+ * @param {THREE.Group} room - La sala a modificar.
+ * @param {number} width - Nuevo ancho.
+ * @param {number} depth - Nueva profundidad.
+ * @param {number} height - Nueva altura.
+ * @param {boolean} [shouldSelect=true] - Si se debe volver a seleccionar la sala después de la actualización.
+ */
+export function updateRoomDimensions(room, width, depth, height, shouldSelect = true) {
+    const oldWidth = room.userData.width;
+    const oldDepth = room.userData.depth;
+
+    const oldBBox = new THREE.Box3().setFromObject(room);
+    const artworksInRoom = objects.filter(o => (o.userData.isPainting || o.userData.isDrawingCanvas) && oldBBox.containsPoint(o.position));
+    const artworkData = artworksInRoom.map(art => ({
+        artwork: art,
+        localPos: art.position.clone().sub(room.position)
+    }));
+    
+    // Limpia los objetos antiguos de los arrays de colisión y objetos.
+    const oldCollidables = [];
+    room.traverse(child => { if (child.userData.isWallContainer || child.userData.isWall || child.userData.isFloor) oldCollidables.push(child); });
+    oldCollidables.forEach(c => { const index = collidables.indexOf(c); if(index > -1) collidables.splice(index,1); });
+    if(room.userData.quizTrigger) { const index = objects.indexOf(room.userData.quizTrigger); if(index > -1) objects.splice(index,1); }
+
+    // Crea la nueva sala y reemplaza la antigua.
+    const oldRoomIndex = roomGroups.indexOf(room); if (oldRoomIndex === -1) return;
+    const newRoom = createRoom(width, depth, height, room.position, room.userData.openings, room.userData.quiz, room.userData.textures, room.userData.id);
+    
+    room.clear(); room.removeFromParent();
+    roomGroups[oldRoomIndex] = newRoom;
+    scene.add(newRoom);
+    
+    // Añade los nuevos objetos a los arrays.
+    newRoom.traverse(child => { 
+        if (child.userData.isWallContainer || child.userData.isWall || child.userData.isFloor) collidables.push(child);
+        if (child.userData.isQuizTrigger) objects.push(child);
+    });
+
+    // Reposiciona las obras de arte.
+    artworkData.forEach(data => {
+        const scaledLocalPos = data.localPos.clone();
+        scaledLocalPos.x *= width / oldWidth;
+        scaledLocalPos.z *= depth / oldDepth;
+        data.artwork.position.copy(newRoom.position).add(scaledLocalPos);
+    });
+
+    if (shouldSelect) selectObject(newRoom);
+    markAsDirty();
+    updateRoomControls();
+}
+
+/**
+ * Crea y devuelve un grupo de objetos que representan una sala del museo.
+ */
+function createRoom(w, d, h, pos, openings = [], quizData, textures, id) {
+    const t = 0.5; const rG = new THREE.Group(); rG.position.copy(pos);
+    rG.userData = { id: id || THREE.MathUtils.generateUUID(), isRoom: true, walls: {}, openings, width: w, depth: d, height: h, quiz: quizData || null, textures: textures || { floor: 'marble', wall: 'wood', ceiling: 'marble' } };
+    
+    // Suelo y techo
+    const fM = new THREE.MeshStandardMaterial({ map: textureCache[rG.userData.textures.floor], side: THREE.DoubleSide }); const fG = new THREE.PlaneGeometry(w, d); const f = new THREE.Mesh(fG, fM); f.rotation.x = -Math.PI / 2; f.position.y = -h / 2; f.receiveShadow = true; f.userData.isFloor = true; f.userData.room = rG; rG.add(f);
+    const cM = new THREE.MeshStandardMaterial({ map: textureCache[rG.userData.textures.ceiling], side: THREE.DoubleSide }); const cG = new THREE.PlaneGeometry(w, d); const c = new THREE.Mesh(cG, cM); c.rotation.x = Math.PI / 2; c.position.y = h / 2; c.userData.isCeiling = true; rG.add(c);
+    
+    // Paredes
+    const wD = [{ s: 'north', p: [0, 0, -d / 2], r: 0, l: w }, { s: 'south', p: [0, 0, d / 2], r: 0, l: w }, { s: 'west', p: [-w / 2, 0, 0], r: Math.PI / 2, l: d }, { s: 'east', p: [w / 2, 0, 0], r: Math.PI / 2, l: d }];
+    wD.forEach(d => { let wall; const data = { s: [d.l, h, t], p: d.p, rotY: d.r }; if (openings.includes(d.s)) wall = createWallWithOpening(data, rG.userData.textures.wall); else wall = createWall(data, rG.userData.textures.wall); wall.userData.side = d.s; rG.add(wall); rG.userData.walls[d.s] = wall; });
+
+    // Luz interior de la sala
+    const light = new THREE.PointLight(0xffeedd, 1.5, Math.max(w, d, h) * 2); light.position.set(0, h / 2 - 1, 0); light.castShadow = true; light.shadow.mapSize.width = 1024; light.shadow.mapSize.height = 1024;
+    rG.add(light);
+
+    // Activador del quiz
+    if (quizData && quizData.length > 0) {
+        const quizTrigger = createQuizTrigger();
+        quizTrigger.position.y = -h / 2 + 2;
+        rG.add(quizTrigger);
+        rG.userData.quizTrigger = quizTrigger;
+    }
+
+    rG.updateWorldMatrix(true, true); return rG;
+}
+
+/**
+ * Funciones auxiliares para crear paredes con o sin aperturas.
+ */
+function createWall(data, textureName) { const wM = new THREE.MeshStandardMaterial({ map: textureCache[textureName] }); const wG = new THREE.BoxGeometry(...data.s); const w = new THREE.Mesh(wG, wM); w.position.set(...data.p); if (data.rotY) w.rotation.y = data.rotY; w.castShadow = true; w.receiveShadow = true; w.userData.isWall = true; return w; }
+function createWallWithOpening(data, textureName, dW = 4, dH = 8) { const wG = new THREE.Group(); const wM = new THREE.MeshStandardMaterial({ map: textureCache[textureName] }); const tW = data.s[0], tH = data.s[1], t = data.s[2]; const sW = (tW - dW) / 2, lH = tH - dH; if (sW > 0.01) { const lGeo = new THREE.BoxGeometry(sW, tH, t); const lW = new THREE.Mesh(lGeo, wM.clone()); lW.position.x = -(dW / 2 + sW / 2); wG.add(lW); const rGeo = new THREE.BoxGeometry(sW, tH, t); const rW = new THREE.Mesh(rGeo, wM.clone()); rW.position.x = (dW / 2 + sW / 2); wG.add(rW); } if (lH > 0.01) { const lGeo = new THREE.BoxGeometry(dW, lH, t); const l = new THREE.Mesh(lGeo, wM.clone()); l.position.y = dH + lH / 2 - tH / 2; wG.add(l); } wG.children.forEach(c => { c.castShadow = true; c.receiveShadow = true; c.userData.isWall = true; }); wG.position.set(...data.p); if (data.rotY) wG.rotation.y = data.rotY; wG.userData.isWallContainer = true; return wG; }
+
+/**
+ * Añade una nueva sala a la escena.
+ */
+function addRoom(w, d, h, pos, openings = [], quizData = null, textures, fromLoad = false, id) {
+    const roomGroup = createRoom(w, d, h, pos, openings, quizData, textures, id);
+    scene.add(roomGroup); roomGroups.push(roomGroup);
+    roomGroup.traverse(child => {
+        if (child.userData.isWallContainer || child.userData.isWall || child.userData.isFloor) collidables.push(child);
+        if (child.userData.isQuizTrigger) objects.push(child);
+    });
+    if (!fromLoad) { markAsDirty(); selectObject(roomGroup); }
+    updateRoomControls();
+}
+
+/**
+ * Actualiza los botones de control (añadir/borrar/quiz) de todas las salas.
+ */
+function updateRoomControls() {
+    roomControlsGroup.clear();
+    const addMat = new THREE.MeshBasicMaterial({ map: addButtonTexture, transparent: true });
+    const deleteMat = new THREE.MeshBasicMaterial({ map: deleteButtonTexture, transparent: true });
+    const quizMat = new THREE.MeshBasicMaterial({ map: quizButtonTexture, transparent: true });
+
+    for (const room of roomGroups) {
+        // Botón de borrar y de quiz
+        const deleteButton = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), deleteMat);
+        deleteButton.position.copy(room.position); deleteButton.position.y += 0.1 - (room.userData.height / 2);
+        deleteButton.position.x -= 2.5; deleteButton.rotation.x = -Math.PI / 2;
+        deleteButton.userData = { room, action: 'delete' }; roomControlsGroup.add(deleteButton);
+
+        const quizButton = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), quizMat);
+        quizButton.position.copy(room.position); quizButton.position.y += 0.1 - (room.userData.height / 2);
+        quizButton.position.x += 2.5; quizButton.rotation.x = -Math.PI / 2;
+        quizButton.userData = { room, action: 'quiz' }; roomControlsGroup.add(quizButton);
+
+        // Botones para añadir salas contiguas
+        for (const side of ['north', 'south', 'east', 'west']) {
+            if (room.userData.walls[side] && !room.userData.openings.includes(side)) {
+                const button = new THREE.Mesh(new THREE.PlaneGeometry(3, 3), addMat);
+                button.userData = { room, side, action: 'add' };
+                let offset = new THREE.Vector3();
+                if (side === 'north') offset.z = -room.userData.depth / 2 - 2.5; if (side === 'south') offset.z = room.userData.depth / 2 + 2.5;
+                if (side === 'east') offset.x = room.userData.width / 2 + 2.5; if (side === 'west') offset.x = -room.userData.width / 2 - 2.5;
+
+                const buttonPos = room.position.clone().add(offset);
+                let isOccupied = roomGroups.some(otherRoom => otherRoom !== room && new THREE.Box3().setFromObject(otherRoom).containsPoint(buttonPos));
+
+                if (!isOccupied) {
+                    button.position.copy(room.position).add(offset); button.position.y = 0.1 - (room.userData.height / 2);
+                    button.rotation.x = -Math.PI / 2; roomControlsGroup.add(button);
+                }
+            }
+        }
+    }
+    // Botón para añadir la primera sala si no hay ninguna.
+    if (roomGroups.length === 0) {
+        const button = new THREE.Mesh(new THREE.PlaneGeometry(3, 3), addMat);
+        button.userData = { room: null, side: null, action: 'add_initial' };
+        button.position.y = 0.1 - 5; button.rotation.x = -Math.PI / 2; roomControlsGroup.add(button);
+    }
+}
+
+/**
+ * Elimina una sala de la escena.
+ */
+function deleteRoom(roomToDelete) {
+    if (roomGroups.length <= 1) {
+        showMessage("No se puede eliminar la última sala.", "error");
+        return;
+    }
+    deselectObject();
+    // Elimina las obras de arte de la sala.
+    const artworksToRemove = objects.filter(obj => (obj.userData.isPainting || obj.userData.isDrawingCanvas) && new THREE.Box3().setFromObject(roomToDelete).containsPoint(obj.position));
+    artworksToRemove.forEach(obj => {
+        if (obj.userData.isDrawingCanvas) {
+            const { canvasId } = obj.userData;
+            const listener = drawingCanvases[canvasId]?.listener;
+            if(listener) listener();
+            delete drawingCanvases[canvasId];
+            remove(ref(db, `museums/${getCurrentMuseumId()}/drawings/${canvasId}`));
+        } else {
+             remove(ref(db, `images/${obj.userData.imageId}`));
+        }
+        const index = objects.indexOf(obj); if (index > -1) objects.splice(index, 1);
+        obj.removeFromParent();
+    });
+
+    const roomIndex = roomGroups.indexOf(roomToDelete); if (roomIndex > -1) roomGroups.splice(roomIndex, 1);
+    roomToDelete.removeFromParent();
+    updateRoomControls();
+    markAsDirty();
+}
+
+/**
+ * Crea el objeto 3D para el activador del quiz.
+ */
+export function createQuizTrigger() {
+    if (!font) return new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0x3b82f6 }));
+    const geo = new TextGeometry('Q', { font, size: 1.5, height: 0.2, curveSegments: 12, bevelEnabled: true, bevelThickness: 0.1, bevelSize: 0.05, bevelOffset: 0, bevelSegments: 5 });
+    geo.computeBoundingBox(); geo.translate(-0.5 * (geo.boundingBox.max.x - geo.boundingBox.min.x), 0, 0);
+    const mat = new THREE.MeshStandardMaterial({ color: 0x3b82f6, metalness: 0.5, roughness: 0.3 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.userData.isQuizTrigger = true; mesh.visible = !isEditMode;
+    return mesh;
+}
+
+/**
+ * Elimina el activador del quiz de una sala.
+ */
+export function removeQuizTrigger(room) {
+    if (room.userData.quizTrigger) {
+        const trigger = room.userData.quizTrigger;
+        const index = objects.indexOf(trigger);
+        if (index > -1) {
+            objects.splice(index, 1);
+        }
+        trigger.removeFromParent();
+        room.userData.quizTrigger = null;
+    }
+}
+
+/**
+ * Crea y coloca un cuadro en la escena.
+ */
+export async function placePainting(url, restoreData) {
+    return new Promise((resolve, reject) => {
+        const textureLoader = new THREE.TextureLoader();
+        textureLoader.load(url, (texture) => {
+            const maxDim = 4.0;
+            const aspect = texture.image ? (texture.image.naturalWidth / texture.image.naturalHeight) : 1;
+            const width = aspect >= 1 ? maxDim : maxDim * aspect;
+            const height = aspect >= 1 ? maxDim / aspect : maxDim;
+            const frameThickness = 0.2;
+            const paintingGroup = new THREE.Group();
+            const frameGeo = new THREE.BoxGeometry(width + frameThickness, height + frameThickness, frameThickness);
+            const frameMat = new THREE.MeshStandardMaterial({ color: 0x3a2414, roughness: 0.6, metalness: 0.4 });
+            const frame = new THREE.Mesh(frameGeo, frameMat); frame.castShadow = true; paintingGroup.add(frame);
+            const canvasGeo = new THREE.PlaneGeometry(width, height);
+            const canvasMat = new THREE.MeshLambertMaterial({ map: texture });
+            const canvas = new THREE.Mesh(canvasGeo, canvasMat); canvas.position.z = frameThickness / 2 + 0.01; paintingGroup.add(canvas);
+
+            paintingGroup.uuid = restoreData?.uuid || THREE.MathUtils.generateUUID();
+            paintingGroup.userData = {
+                isPainting: true,
+                infoText: restoreData?.infoText || "",
+                imageId: restoreData?.imageId,
+                initialWidth: width,
+                initialHeight: height
+            };
+
+            if (activePaintingIntersect) {
+                const intersect = activePaintingIntersect;
+                const worldNormal = new THREE.Vector3().copy(intersect.face.normal).transformDirection(intersect.object.matrixWorld);
+                paintingGroup.position.copy(intersect.point);
+                paintingGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), worldNormal);
+                paintingGroup.position.addScaledVector(worldNormal, frameThickness / 2 + 0.01);
+                markAsDirty();
+                activePaintingIntersect = null;
+            } else if (restoreData) {
+                paintingGroup.position.copy(restoreData.position);
+                paintingGroup.quaternion.copy(restoreData.quaternion);
+                paintingGroup.scale.copy(restoreData.scale);
+            }
+
+            scene.add(paintingGroup); objects.push(paintingGroup); resolve(paintingGroup);
+        }, undefined, () => reject(new Error('Failed to load painting texture.')));
+    });
+}
+
+/**
+ * Crea y coloca una pizarra de dibujo en la escena.
+ */
+function placeDrawingCanvas(intersect, restoreData) {
+    return new Promise((resolve) => {
+        const canvasId = restoreData?.canvasId || THREE.MathUtils.generateUUID();
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 1024; canvas.height = 768;
+        const context = canvas.getContext('2d');
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+        const drawingRef = ref(db, `museums/${getCurrentMuseumId()}/drawings/${canvasId}`);
+        const listener = onValue(drawingRef, (snapshot) => {
+            redrawCanvas(canvasId, snapshot.val());
+        });
+
+        drawingCanvases[canvasId] = { canvas, context, texture, listener };
+
+        const geo = new THREE.PlaneGeometry(4, 3);
+        const mat = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.8, metalness: 0.1 });
+        const mesh = new THREE.Mesh(geo, mat);
+
+        mesh.userData = {
+            isDrawingCanvas: true,
+            canvasId,
+            initialWidth: 4,
+            initialHeight: 3,
+            infoText: ''
+        };
+        mesh.uuid = restoreData?.uuid || THREE.MathUtils.generateUUID();
+
+        if (intersect) {
+            const worldNormal = new THREE.Vector3().copy(intersect.face.normal).transformDirection(intersect.object.matrixWorld);
+            mesh.position.copy(intersect.point);
+            mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), worldNormal);
+            mesh.position.addScaledVector(worldNormal, 0.1);
+            markAsDirty();
+        } else if (restoreData) {
+            mesh.position.copy(restoreData.position);
+            mesh.quaternion.copy(restoreData.quaternion);
+            mesh.scale.copy(restoreData.scale);
+        }
+
+        scene.add(mesh);
+        objects.push(mesh);
+        resolve(mesh);
+    });
+}
+
+/**
+ * Redibuja el contenido de una pizarra a partir de los datos de Firebase.
+ */
+function redrawCanvas(canvasId, paths) {
+    const drawing = drawingCanvases[canvasId];
+    if (!drawing) return;
+    const { canvas, context, texture } = drawing;
+
+    context.fillStyle = 'white';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    if (!paths) {
+        texture.needsUpdate = true;
+        return;
+    };
+
+    context.lineCap = 'round';
+    context.lineWidth = 5;
+
+    for (const pathId in paths) {
+        const path = paths[pathId];
+        if (!path.points || path.points.length < 2) continue;
+        context.strokeStyle = path.color;
+        context.beginPath();
+
+        let x = path.points[0] * canvas.width;
+        let y = (1 - path.points[1]) * canvas.height;
+        context.moveTo(x, y);
+
+        for (let i = 2; i < path.points.length; i += 2) {
+            x = path.points[i] * canvas.width;
+            y = (1 - path.points[i + 1]) * canvas.height;
+            context.lineTo(x, y);
+        }
+        context.stroke();
+    }
+    texture.needsUpdate = true;
+}
 
