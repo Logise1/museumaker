@@ -1,31 +1,53 @@
+// --- IMPORTACIONES ---
+// Funciones de Firebase necesarias para la UI (leaderboard, etc.).
 import { onValue, push, set, get, query, orderByChild, limitToFirst, serverTimestamp, ref } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
+// Funciones y variables del módulo de la escena 3D que la UI necesita para interactuar con el mundo 3D.
 import { getSelectedObject, updateRoomDimensions as updateRoomDimensions3D, textureUrls, textureNames, setCurrentMusic, setCurrentDrawingColor, getDb, getMuseumId, objects, drawingCanvases } from './three-scene.js';
 
-let callbacks = {};
-let markAsDirty; 
-const drawingColors = ['#000000', '#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6', '#ffffff'];
+// --- ESTADO DEL MÓDULO ---
+let callbacks = {}; // Almacena las funciones del módulo principal (main.js).
+let markAsDirty; // Referencia a la función markAsDirty para marcar cambios.
+const drawingColors = ['#000000', '#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6', '#ffffff']; // Paleta de colores para dibujar.
 
+// --- GESTIÓN DE VISTAS Y MODALES ---
 
-// --- VIEW MANAGEMENT ---
+// Objeto que contiene las referencias a las vistas principales de la aplicación.
 const views = {
     auth: document.getElementById('auth-container'),
     dashboard: document.getElementById('dashboard-container'),
     app: document.getElementById('app-container')
 };
+/**
+ * Muestra una vista principal y oculta las demás.
+ * @param {string} viewName - El nombre de la vista a mostrar ('auth', 'dashboard', 'app').
+ */
 export function showView(viewName) {
     Object.values(views).forEach(v => v.classList.add('hidden'));
     if (views[viewName]) views[viewName].classList.remove('hidden');
 }
 
+/**
+ * Muestra un modal por su ID.
+ * @param {string} modalId - El ID del elemento del modal.
+ */
 export function showModal(modalId) { 
     document.body.classList.add('is-interacting');
     document.getElementById(modalId).classList.remove('hidden'); 
 }
+/**
+ * Oculta un modal por su ID.
+ * @param {string} modalId - El ID del elemento del modal.
+ */
 export function hideModal(modalId) { 
     document.body.classList.remove('is-interacting');
     document.getElementById(modalId).classList.add('hidden'); 
 }
 
+/**
+ * Muestra una notificación temporal en la parte superior de la pantalla.
+ * @param {string} message - El mensaje a mostrar.
+ * @param {string} [type='success'] - El tipo de mensaje ('success' o 'error').
+ */
 export function showMessage(message, type = 'success') {
     const box = document.createElement('div');
     box.textContent = message;
@@ -34,7 +56,14 @@ export function showMessage(message, type = 'success') {
     setTimeout(() => box.remove(), 3000);
 }
 
-// --- DASHBOARD ---
+// --- PANEL DE CONTROL (DASHBOARD) ---
+
+/**
+ * Renderiza la lista de museos del usuario en el panel de control.
+ * @param {object} museumsRef - Referencia a la ubicación de los museos en Firebase.
+ * @param {function} startEditorCallback - Función a llamar al hacer clic en 'Editar'.
+ * @param {function} confirmDeleteCallback - Función a llamar al hacer clic en 'Eliminar'.
+ */
 export function renderDashboard(museumsRef, startEditorCallback, confirmDeleteCallback) {
     onValue(museumsRef, (snapshot) => {
         const museumsList = document.getElementById('museums-list');
@@ -58,7 +87,12 @@ export function renderDashboard(museumsRef, startEditorCallback, confirmDeleteCa
     });
 }
 
-// --- SAVE BUTTON UI ---
+// --- INTERFAZ DEL BOTÓN DE GUARDAR ---
+
+/**
+ * Actualiza el estado visual del botón de guardar.
+ * @param {string} state - El estado ('dirty', 'saving', 'saved', 'default').
+ */
 export function updateSaveButtonState(state) {
     const btn = document.getElementById('save-changes-btn');
     if (!btn) return;
@@ -92,7 +126,13 @@ export function updateSaveButtonState(state) {
 }
 
 
-// --- INFO PANEL & SELECTION ---
+// --- PANEL DE INFORMACIÓN Y SELECCIÓN ---
+
+/**
+ * Actualiza el contenido del panel lateral según el objeto 3D seleccionado.
+ * @param {object} selectedObject - El objeto de Three.js seleccionado.
+ * @param {string|null} [forceView=null] - Fuerza la muestra de una vista específica del panel.
+ */
 export function updateInfoPanel(selectedObject, forceView = null) {
     const panels = {
         default: document.getElementById('info-panel-default'),
@@ -127,11 +167,20 @@ export function updateInfoPanel(selectedObject, forceView = null) {
     }
 }
 
+/**
+ * Resetea el panel de información a su estado por defecto cuando no hay nada seleccionado.
+ */
 export function deselectObject() {
     updateInfoPanel(null);
 }
 
-// --- FOCUS VIEW ---
+// --- VISTA DE FOCO (ZOOM EN CUADRO) ---
+
+/**
+ * Muestra el modal de vista de foco para un cuadro.
+ * @param {object} paintingGroup - El grupo de objetos del cuadro seleccionado.
+ * @param {function} getImageDataUrl - Función para obtener la URL de la imagen desde Firebase.
+ */
 export async function showFocusView(paintingGroup, getImageDataUrl) {
     if (!paintingGroup) return;
     showModal('focus-view-modal');
@@ -146,16 +195,23 @@ export async function showFocusView(paintingGroup, getImageDataUrl) {
     if (imageUrl) imageEl.src = imageUrl; else imageEl.src = 'https://placehold.co/800x600/fee2e2/ef4444?text=Error+al+cargar';
 }
 
+/**
+ * Oculta el modal de la vista de foco.
+ */
 export function hideFocusView() {
     if (!document.getElementById('focus-view-modal').classList.contains('hidden')) {
         hideModal('focus-view-modal');
     }
 }
 
-// --- QUIZ UI ---
+// --- INTERFAZ DEL QUIZ ---
 let editingQuizData = [], currentEditingQuestionIndex = 0;
 let currentQuizQuestions = [], currentQuestionIndex = 0, quizStartTime = 0, currentQuizRoom = null;
 
+/**
+ * Abre el editor de quizzes para una sala específica.
+ * @param {object} room - La sala que contiene el quiz.
+ */
 export function openQuizEditor(room) {
     currentQuizRoom = room;
     editingQuizData = JSON.parse(JSON.stringify(room.userData.quiz || []));
@@ -167,6 +223,9 @@ export function openQuizEditor(room) {
     showModal('quiz-modal');
 }
 
+/**
+ * Renderiza la interfaz del editor de quizzes con la pregunta actual.
+ */
 function renderQuizEditor() {
     const navContainer = document.getElementById('quiz-question-nav');
     navContainer.innerHTML = '';
@@ -194,6 +253,9 @@ function renderQuizEditor() {
     }
 }
 
+/**
+ * Guarda los datos de la pregunta actual desde los campos del formulario al estado local.
+ */
 function saveCurrentQuizQuestionFromUI() {
      if (!editingQuizData[currentEditingQuestionIndex]) return;
      const question = document.getElementById('quiz-question').value.trim();
@@ -203,6 +265,11 @@ function saveCurrentQuizQuestionFromUI() {
      editingQuizData[currentEditingQuestionIndex] = { question, options, correctAnswer };
 }
 
+/**
+ * Inicia el quiz para un visitante.
+ * @param {object} room - La sala del quiz.
+ * @param {object} currentUser - El usuario actual (puede ser anónimo).
+ */
 export function startQuiz(room, currentUser) {
     const quiz = room.userData.quiz;
     if (!quiz || quiz.length === 0) return;
@@ -215,6 +282,9 @@ export function startQuiz(room, currentUser) {
     quizStartTime = Date.now();
 }
 
+/**
+ * Renderiza la pregunta y opciones para el visitante.
+ */
 function renderTakeQuizQuestion(currentUser) {
     const question = currentQuizQuestions[currentQuestionIndex];
     document.getElementById('quiz-progress').textContent = `Pregunta ${currentQuestionIndex + 1} de ${currentQuizQuestions.length}`;
@@ -230,9 +300,12 @@ function renderTakeQuizQuestion(currentUser) {
     });
 }
 
+/**
+ * Procesa la respuesta del visitante y avanza a la siguiente pregunta o finaliza el quiz.
+ */
 async function answerQuiz(isCorrect, currentUser) {
     if (!isCorrect) {
-        // Future: show feedback
+        // Futuro: mostrar feedback de respuesta incorrecta.
     }
 
     currentQuestionIndex++;
@@ -259,6 +332,9 @@ async function answerQuiz(isCorrect, currentUser) {
 }
 
 
+/**
+ * Guarda la puntuación en el leaderboard de Firebase.
+ */
 export async function saveScoreToLeaderboard(roomId, time, userId, userEmail, userName = null) {
     const db = getDb();
     const museumId = getMuseumId();
@@ -268,6 +344,9 @@ export async function saveScoreToLeaderboard(roomId, time, userId, userEmail, us
     await set(newScoreRef, { time, userId, userEmail, userName, createdAt: serverTimestamp() });
 }
 
+/**
+ * Muestra la tabla de clasificación.
+ */
 async function showLeaderboard(roomId, yourTime = null) {
     showModal('leaderboard-modal');
     const db = getDb();
@@ -310,18 +389,26 @@ async function showLeaderboard(roomId, yourTime = null) {
     }
 }
 
+/**
+ * Actualiza la selección de música en el panel de ajustes.
+ */
 export function updateSettingsUI(music) {
     if (!music) return;
     const radioToCheck = document.querySelector(`.music-select-radio[value="${music}"]`);
     if (radioToCheck) radioToCheck.checked = true;
 }
 
-// --- INITIALIZATION ---
+// --- INICIALIZACIÓN DE LA UI ---
+/**
+ * Función principal que se ejecuta al cargar el script.
+ * Configura todos los event listeners de la interfaz.
+ * @param {object} cb - Objeto con los callbacks del módulo principal.
+ */
 export function initUI(cb) {
     callbacks = cb;
     markAsDirty = cb.markAsDirty; 
     
-    // --- AUTH ---
+    // --- Autenticación ---
     document.getElementById('login-btn').addEventListener('click', () => {
         const email = document.getElementById('email').value;
         const password = document.getElementById('password').value;
@@ -334,7 +421,7 @@ export function initUI(cb) {
     });
     document.getElementById('logout-btn').addEventListener('click', callbacks.logout);
 
-    // --- DASHBOARD ---
+    // --- Dashboard ---
     document.getElementById('create-museum-btn').addEventListener('click', () => {
          document.getElementById('new-museum-name').value = '';
          showModal('create-museum-modal');
@@ -354,7 +441,7 @@ export function initUI(cb) {
         hideModal('delete-confirm-modal');
     });
 
-    // --- EDITOR ---
+    // --- Editor ---
     document.getElementById('back-to-dashboard-btn').addEventListener('click', callbacks.goBack);
     document.getElementById('publish-btn').addEventListener('click', async () => {
         const url = await callbacks.publishMuseum();
@@ -365,7 +452,7 @@ export function initUI(cb) {
     document.getElementById('preview-btn').addEventListener('click', callbacks.switchToPreview);
     document.getElementById('save-changes-btn').addEventListener('click', () => callbacks.saveChanges());
     
-    // --- MODALS ---
+    // --- Modales ---
     document.getElementById('add-painting-btn').addEventListener('click', () => {
         const file = document.getElementById('image-file').files[0];
         if (!file) return showMessage("Por favor, selecciona una imagen.", 'error');
@@ -399,7 +486,7 @@ export function initUI(cb) {
     document.getElementById('focus-view-modal').addEventListener('click', hideFocusView);
 
 
-    // --- QUIZ ---
+    // --- Quiz ---
     document.getElementById('add-quiz-question-btn').addEventListener('click', () => {
         saveCurrentQuizQuestionFromUI();
         editingQuizData.push({ question: '', options: ['', '', '', ''], correctAnswer: 0 });
@@ -432,7 +519,7 @@ export function initUI(cb) {
     document.getElementById('cancel-quiz-btn').addEventListener('click', () => hideModal('quiz-modal'));
     document.getElementById('close-leaderboard-btn').addEventListener('click', () => hideModal('leaderboard-modal'));
 
-    // --- NAME PROMPT ---
+    // --- Name Prompt ---
     document.getElementById('save-score-btn').addEventListener('click', async () => {
         const playerName = document.getElementById('player-name').value.trim();
         if (!playerName) return showMessage("Por favor, introduce un nombre.", "error");
@@ -448,7 +535,7 @@ export function initUI(cb) {
         hideModal('name-prompt-modal'); showLeaderboard(roomId);
     });
 
-    // --- INFO PANEL ---
+    // --- Panel de Información ---
     document.getElementById('settings-btn').addEventListener('click', () => updateInfoPanel(null, 'settings'));
     
     const updateDim = () => {
@@ -489,7 +576,7 @@ export function initUI(cb) {
         }
     });
 
-    // --- TEXTURES & MUSIC ---
+    // --- Texturas y Música ---
     const onTextureSelect = (event) => {
         const item = event.target.closest('[data-texture-name]');
         const selected = getSelectedObject();
@@ -531,7 +618,7 @@ export function initUI(cb) {
         updateMuteButtonUI();
     });
 
-    // --- DRAWING ---
+    // --- Dibujo ---
     const drawingControls = document.getElementById('drawing-controls');
     drawingControls.innerHTML = '';
     drawingColors.forEach(color => {
@@ -547,11 +634,14 @@ export function initUI(cb) {
         drawingControls.appendChild(swatch);
     });
 
-    // Final setup
+    // Setup final
     setupTextureSelectors();
     updateMuteButtonUI();
 }
 
+/**
+ * Crea los selectores de texturas en el panel de información.
+ */
 function setupTextureSelectors() {
     const selectors = {
         floor: document.getElementById('floor-texture-selector'),
@@ -571,6 +661,9 @@ function setupTextureSelectors() {
     });
 }
 
+/**
+ * Actualiza las dimensiones de un cuadro cuando se modifican en el panel.
+ */
 function updatePaintingDimensions() {
     const selected = getSelectedObject();
     if (!selected?.userData.isPainting && !selected?.userData.isDrawingCanvas) return;
@@ -589,6 +682,9 @@ function updatePaintingDimensions() {
     markAsDirty();
 }
 
+/**
+ * Actualiza el icono del botón de silencio de la música.
+ */
 function updateMuteButtonUI() {
     const audio = document.getElementById('background-audio');
     const btn = document.getElementById('mute-btn');
