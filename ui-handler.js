@@ -1,11 +1,12 @@
 // --- IMPORTACIONES ---
 // Funciones de Firebase necesarias para la UI (leaderboard, etc.).
 import { onValue, push, set, get, query, orderByChild, limitToFirst, serverTimestamp, ref } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
+// *** ELIMINADO: Se quitan las importaciones de Firebase Storage. ***
 // Funciones y variables del módulo de la escena 3D que la UI necesita para interactuar con el mundo 3D.
 import { getSelectedObject, updateRoomDimensions as updateRoomDimensions3D, textureUrls, textureNames, setCurrentMusic, setCurrentDrawingColor, getDb, getMuseumId, objects, drawingCanvases } from './three-scene.js';
 
 // --- ESTADO DEL MÓDULO ---
-let callbacks = {}; // Almacena las funciones del módulo principal (main.js).
+let callbacks = {}; // Almacena las funciones y objetos del módulo principal (main.js).
 let markAsDirty; // Referencia a la función markAsDirty para marcar cambios.
 const drawingColors = ['#000000', '#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6', '#ffffff']; // Paleta de colores para dibujar.
 
@@ -179,7 +180,7 @@ export function deselectObject() {
 /**
  * Muestra el modal de vista de foco para un cuadro.
  * @param {object} paintingGroup - El grupo de objetos del cuadro seleccionado.
- * @param {function} getImageDataUrl - Función para obtener la URL de la imagen desde Firebase.
+ * @param {function} getImageDataUrl - *** REVERTIDO: Función para obtener la URL de la imagen desde Firebase RTDB. ***
  */
 export async function showFocusView(paintingGroup, getImageDataUrl) {
     if (!paintingGroup) return;
@@ -191,6 +192,7 @@ export async function showFocusView(paintingGroup, getImageDataUrl) {
     imageEl.src = 'https://placehold.co/800x600/f1f5f9/94a3b8?text=Cargando...';
     textEl.textContent = paintingGroup.userData.infoText || "No hay información disponible para esta obra.";
 
+    // *** REVERTIDO: Llama a la función para obtener el base64 de la RTDB. ***
     const imageUrl = await getImageDataUrl(paintingGroup.userData.imageId);
     if (imageUrl) imageEl.src = imageUrl; else imageEl.src = 'https://placehold.co/800x600/fee2e2/ef4444?text=Error+al+cargar';
 }
@@ -452,7 +454,8 @@ export function initUI(cb) {
     document.getElementById('preview-btn').addEventListener('click', callbacks.switchToPreview);
     document.getElementById('save-changes-btn').addEventListener('click', () => callbacks.saveChanges());
     
-    // --- Modales ---
+    // --- MODAL DE AÑADIR PINTURA (LÓGICA RTDB) ---
+    // *** REVERTIDO: Se vuelve a usar FileReader para guardar la imagen como base64 en la RTDB. ***
     document.getElementById('add-painting-btn').addEventListener('click', () => {
         const file = document.getElementById('image-file').files[0];
         if (!file) return showMessage("Por favor, selecciona una imagen.", 'error');
@@ -464,14 +467,18 @@ export function initUI(cb) {
         const reader = new FileReader();
         reader.onload = async (e) => {
             try {
+                // 1. Guardar el base64 en la RTDB.
                 const db = getDb();
                 const newImageRef = push(ref(db, 'images'));
                 await set(newImageRef, e.target.result);
+
+                // 2. Llamar al callback para colocar el cuadro con el nuevo ID de la imagen.
                 await callbacks.placePainting(e.target.result, { imageId: newImageRef.key });
+
                 hideModal('painting-modal');
                 document.getElementById('image-file').value = '';
             } catch (error) { 
-                console.error("Error placing painting:", error);
+                console.error("Error al colocar la pintura:", error);
                 showMessage("Hubo un problema al guardar tu imagen.", 'error');
             } finally { 
                 addButton.disabled = false; 
@@ -480,6 +487,7 @@ export function initUI(cb) {
         };
         reader.readAsDataURL(file);
     });
+
     document.getElementById('cancel-painting-btn').addEventListener('click', () => hideModal('painting-modal'));
     document.getElementById('close-publish-modal-btn').addEventListener('click', () => hideModal('publish-modal'));
     document.getElementById('copy-url-btn').addEventListener('click', () => { navigator.clipboard.writeText(document.getElementById('publish-url').value); showMessage("Enlace copiado!"); });
