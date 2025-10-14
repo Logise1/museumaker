@@ -1,8 +1,8 @@
 import { onValue, push, set, get, query, orderByChild, limitToFirst, serverTimestamp, ref } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
-import { getSelectedObject, updateRoomDimensions as updateRoomDimensions3D, textureUrls, textureNames, setCurrentMusic, setCurrentDrawingColor, getDb, getMuseumId, clearScene as clearScene3D, objects, roomGroups, getRenderer, drawingCanvases, placePainting } from './three-scene.js';
+import { getSelectedObject, updateRoomDimensions as updateRoomDimensions3D, textureUrls, textureNames, setCurrentMusic, setCurrentDrawingColor, getDb, getMuseumId, objects, drawingCanvases } from './three-scene.js';
 
 let callbacks = {};
-let markAsDirty; // Will be set in initUI
+let markAsDirty; 
 const drawingColors = ['#000000', '#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6', '#ffffff'];
 
 
@@ -57,6 +57,40 @@ export function renderDashboard(museumsRef, startEditorCallback, confirmDeleteCa
         museumsList.querySelectorAll('.delete-btn').forEach(b => b.addEventListener('click', (e) => confirmDeleteCallback(e.target.dataset.id, e.target.dataset.name)));
     });
 }
+
+// --- SAVE BUTTON UI ---
+export function updateSaveButtonState(state) {
+    const btn = document.getElementById('save-changes-btn');
+    if (!btn) return;
+
+    btn.classList.remove('btn-primary', 'btn-secondary');
+
+    switch (state) {
+        case 'dirty':
+            btn.textContent = 'Guardar Cambios';
+            btn.disabled = false;
+            btn.classList.add('btn-primary');
+            break;
+        case 'saving':
+            btn.textContent = 'Guardando...';
+            btn.disabled = true;
+            btn.classList.add('btn-secondary');
+            break;
+        case 'saved':
+            showMessage('¡Guardado con éxito!');
+            btn.textContent = 'Guardado';
+            btn.disabled = true;
+            btn.classList.add('btn-secondary');
+            break;
+        case 'default':
+        default:
+            btn.textContent = 'Guardado';
+            btn.disabled = true;
+            btn.classList.add('btn-secondary');
+            break;
+    }
+}
+
 
 // --- INFO PANEL & SELECTION ---
 export function updateInfoPanel(selectedObject, forceView = null) {
@@ -197,10 +231,8 @@ function renderTakeQuizQuestion(currentUser) {
 }
 
 async function answerQuiz(isCorrect, currentUser) {
-    // For simplicity, we assume any answer moves to the next question.
-    // A real implementation might show feedback.
     if (!isCorrect) {
-        // Maybe show a "wrong answer" message
+        // Future: show feedback
     }
 
     currentQuestionIndex++;
@@ -208,11 +240,7 @@ async function answerQuiz(isCorrect, currentUser) {
         const completionTime = Date.now() - quizStartTime;
         hideModal('take-quiz-modal');
 
-        if (!currentQuizRoom) {
-            console.error("Quiz finished but no room was associated with it.");
-            document.body.classList.remove('is-interacting');
-            return;
-        }
+        if (!currentQuizRoom) return;
 
         if (currentUser && !currentUser.isAnonymous) {
             await saveScoreToLeaderboard(currentQuizRoom.userData.id, completionTime, currentUser.uid, currentUser.email);
@@ -291,7 +319,7 @@ export function updateSettingsUI(music) {
 // --- INITIALIZATION ---
 export function initUI(cb) {
     callbacks = cb;
-    markAsDirty = cb.markAsDirty; // Store the callback
+    markAsDirty = cb.markAsDirty; 
     
     // --- AUTH ---
     document.getElementById('login-btn').addEventListener('click', () => {
@@ -335,6 +363,7 @@ export function initUI(cb) {
     });
     document.getElementById('add-drawing-canvas-btn').addEventListener('click', callbacks.addDrawing);
     document.getElementById('preview-btn').addEventListener('click', callbacks.switchToPreview);
+    document.getElementById('save-changes-btn').addEventListener('click', () => callbacks.saveChanges());
     
     // --- MODALS ---
     document.getElementById('add-painting-btn').addEventListener('click', () => {
@@ -351,7 +380,6 @@ export function initUI(cb) {
                 const db = getDb();
                 const newImageRef = push(ref(db, 'images'));
                 await set(newImageRef, e.target.result);
-                // The placePainting function is now directly imported and called
                 await callbacks.placePainting(e.target.result, { imageId: newImageRef.key });
                 hideModal('painting-modal');
                 document.getElementById('image-file').value = '';
@@ -519,9 +547,9 @@ export function initUI(cb) {
         drawingControls.appendChild(swatch);
     });
 
-    // Final setup of static elements
+    // Final setup
     setupTextureSelectors();
-    updateMuteButtonUI(); // Set initial state
+    updateMuteButtonUI();
 }
 
 function setupTextureSelectors() {
