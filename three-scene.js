@@ -1,38 +1,46 @@
+// --- IMPORTACIONES ---
+// Se importa la librería Three.js y sus componentes adicionales para controles, VR, y texto 3D.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { FontLoader } from 'three/addons/loaders/FontLoader.js';
 import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
+// Funciones de Firebase para interactuar con la base de datos.
 import { ref, set, onValue, push, get, remove } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
-import { showModal, hideModal, updateInfoPanel, deselectObject as deselectObjectUI, showMessage, openQuizEditor, hideFocusView, showFocusView, updateSettingsUI, startQuiz, updateSaveButtonState } from './ui-handler.js';
+// Funciones del manejador de UI para actualizar la interfaz desde la lógica 3D.
+import { showModal, updateInfoPanel, deselectObject as deselectObjectUI, showMessage, openQuizEditor, hideFocusView, showFocusView, updateSettingsUI, startQuiz, updateSaveButtonState } from './ui-handler.js';
 
-// --- MODULE STATE ---
+// --- ESTADO DEL MÓDULO ---
+// Variables principales de la escena 3D.
 let scene, camera, renderer, orbitControls, pointerLockControls;
 let isEditMode = true, isViewerMode = false;
+// Referencias a funciones y variables del módulo principal (main.js).
 let markAsDirty, db, getCurrentMuseumId, getCurrentUser;
 
+// Recursos y assets 3D.
 let addButtonTexture, deleteButtonTexture, quizButtonTexture;
 let font;
-let roomControlsGroup;
-let activePaintingIntersect = null;
+let roomControlsGroup; // Grupo que contiene los botones de control de las salas.
+let activePaintingIntersect = null; // Almacena la intersección donde se colocará un nuevo cuadro.
 let viewerOverlay;
-let lastPlayerPosition = new THREE.Vector3(0, 5, 0), lastPlayerQuaternion = new THREE.Quaternion();
-const dragPlane = new THREE.Plane(), dragIntersection = new THREE.Vector3();
+let lastPlayerPosition = new THREE.Vector3(0, 5, 0), lastPlayerQuaternion = new THREE.Quaternion(); // Guarda la posición del jugador al cambiar de modo.
+const dragPlane = new THREE.Plane(), dragIntersection = new THREE.Vector3(); // Para arrastrar objetos.
 const raycaster = new THREE.Raycaster(), keysPressed = {};
 const playerHeight = 5;
-const clock = new THREE.Clock();
+const clock = new THREE.Clock(); // Para manejar el tiempo en la animación.
 let playerVelocity = new THREE.Vector3();
 const gravity = 30.0;
 
-let selectedObject = null, selectionBox = null;
+let selectedObject = null, selectionBox = null; // Para el objeto seleccionado y su contorno.
 
-// Drawing State
+// Estado del modo de dibujo.
 let isPlacingDrawingCanvas = false;
 let isDrawing = false, activeDrawingCanvas = null, currentDrawingPath = [];
 export let currentDrawingColor = '#000000';
-export const drawingCanvases = {};
+export const drawingCanvases = {}; // Almacena datos de los lienzos de dibujo.
 
+// URLs y caché de texturas.
 export const textureUrls = {
     marble: 'https://museumaker.netlify.app/assets/marble.jpg',
     wood: 'https://museumaker.netlify.app/assets/wood.jpg',
@@ -41,14 +49,15 @@ export const textureUrls = {
     darkred: 'https://museumaker.netlify.app/assets/darkred.png'
 };
 export const textureNames = { marble: 'Mármol', wood: 'Madera', darkwood: 'Madera Oscura', blue: 'Azul', darkred: 'Rojo Oscuro' };
-
 export const textureCache = {};
 export let currentMusic = 'none';
 
 let _isDataLoaded = false;
+// Arrays para gestionar los objetos de la escena.
 export const objects = [], collidables = [], roomGroups = [];
 
-// --- GETTERS and SETTERS for state needed by other modules ---
+// --- GETTERS Y SETTERS ---
+// Funciones para que otros módulos puedan acceder al estado de este de forma controlada.
 export function getRenderer() { return renderer; }
 export function isDataLoaded() { return _isDataLoaded; }
 export function setPlacingDrawingCanvas(value) { isPlacingDrawingCanvas = value; }
@@ -58,7 +67,10 @@ export function getMuseumId() { return getCurrentMuseumId(); }
 export function setCurrentMusic(music) { currentMusic = music; markAsDirty(); }
 export function setCurrentDrawingColor(color) { currentDrawingColor = color; }
 
-// --- INITIALIZATION ---
+// --- INICIALIZACIÓN ---
+/**
+ * Inicializa la escena 3D, cámara, renderer, y controles. Se llama al entrar al editor/visor.
+ */
 export function init3D(viewerMode, dirtyCallback, database, museumIdGetter, userGetter) {
     isViewerMode = viewerMode;
     markAsDirty = dirtyCallback;
@@ -66,6 +78,7 @@ export function init3D(viewerMode, dirtyCallback, database, museumIdGetter, user
     getCurrentMuseumId = museumIdGetter;
     getCurrentUser = userGetter;
 
+    // Limpia la escena anterior si existe.
     if (renderer) {
         orbitControls?.dispose();
         pointerLockControls?.dispose();
@@ -76,6 +89,7 @@ export function init3D(viewerMode, dirtyCallback, database, museumIdGetter, user
     }
     viewerOverlay = document.getElementById('viewer-overlay');
 
+    // Configuración básica de la escena.
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x87ceeb);
     scene.fog = new THREE.Fog(0x87ceeb, 0, 250);
@@ -89,6 +103,7 @@ export function init3D(viewerMode, dirtyCallback, database, museumIdGetter, user
     const vrButton = VRButton.createButton(renderer);
     document.getElementById('vr-button-container').appendChild(vrButton);
 
+    // Añade luces y un suelo base.
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
     scene.add(ambientLight);
     const groundGeo = new THREE.PlaneGeometry(1000, 1000);
@@ -101,10 +116,12 @@ export function init3D(viewerMode, dirtyCallback, database, museumIdGetter, user
     roomControlsGroup = new THREE.Group();
     scene.add(roomControlsGroup);
 
+    // Configura los controles de cámara.
     orbitControls = new OrbitControls(camera, renderer.domElement);
     orbitControls.enableDamping = true;
     pointerLockControls = new PointerLockControls(camera, renderer.domElement);
 
+    // Caja de selección para objetos.
     selectionBox = new THREE.BoxHelper(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1)), 0xffff00);
     selectionBox.visible = false;
     scene.add(selectionBox);
@@ -113,10 +130,15 @@ export function init3D(viewerMode, dirtyCallback, database, museumIdGetter, user
     setup3DEventListeners();
     loadAssets();
 
+    // Inicia el bucle de animación.
     renderer.setAnimationLoop(animate);
 }
 
-// --- DATA HANDLING ---
+// --- MANEJO DE DATOS ---
+
+/**
+ * Escucha los cambios en los datos del museo en Firebase y actualiza la escena.
+ */
 export function listenToMuseumData(db, museumId, isViewerMode, currentUser, goBackToDashboard) {
     Object.values(drawingCanvases).forEach(({ listener }) => listener && listener());
 
@@ -152,6 +174,9 @@ export function listenToMuseumData(db, museumId, isViewerMode, currentUser, goBa
     return unsubscribe;
 }
 
+/**
+ * Recopila el estado actual de la escena y lo guarda en Firebase.
+ */
 export function saveMuseumToDB(db, museumId, isViewerMode, onComplete) {
     if (isViewerMode || !museumId) {
         if (onComplete) onComplete();
@@ -160,6 +185,7 @@ export function saveMuseumToDB(db, museumId, isViewerMode, onComplete) {
 
     const state = { rooms: [], settings: { music: currentMusic } };
 
+    // Recopila datos de las salas.
     roomGroups.forEach(room => {
         const roomData = {
             id: room.userData.id,
@@ -175,6 +201,7 @@ export function saveMuseumToDB(db, museumId, isViewerMode, onComplete) {
         state.rooms.push(roomData);
     });
 
+    // Recopila datos de los cuadros y pizarras.
     objects.forEach(o => {
         if (o.userData.isPainting || o.userData.isDrawingCanvas) {
             const artData = {
@@ -202,13 +229,16 @@ export function saveMuseumToDB(db, museumId, isViewerMode, onComplete) {
         .catch(err => console.error("Error al guardar:", err));
 }
 
+/**
+ * Carga el estado de un museo desde un objeto de datos y reconstruye la escena.
+ */
 async function loadMuseumState(state) {
     if (!state) return;
     currentMusic = state.settings?.music || 'none';
 
+    // Configura la música de fondo.
     const backgroundAudio = document.getElementById('background-audio');
     const musicPlayer = document.getElementById('music-player');
-
     if (isViewerMode) {
         if (currentMusic && currentMusic !== 'none') {
             backgroundAudio.src = `assets/music/${currentMusic}`;
@@ -223,6 +253,7 @@ async function loadMuseumState(state) {
 
     clearScene();
 
+    // Reconstruye las salas y obras de arte.
     const promises = [];
     if (state.rooms) {
         for (const roomData of state.rooms) {
@@ -249,9 +280,12 @@ async function loadMuseumState(state) {
     } else {
         switchToEditMode();
     }
-    updateSaveButtonState('default');
+    updateSaveButtonState('default'); // Resetea el botón de guardar.
 }
 
+/**
+ * Obtiene la URL de una imagen (en base64) desde Firebase.
+ */
 async function getImageDataUrl(imageId) {
     if (!imageId) return null;
     try {
@@ -261,7 +295,10 @@ async function getImageDataUrl(imageId) {
     } catch (error) { console.error("Error fetching image data:", error); return null; }
 }
 
-// --- SCENE MANAGEMENT ---
+// --- GESTIÓN DE LA ESCENA ---
+/**
+ * Limpia completamente la escena 3D, eliminando todos los objetos.
+ */
 export function clearScene() {
     _isDataLoaded = false;
     Object.values(drawingCanvases).forEach(({ listener }) => listener && listener());
@@ -286,15 +323,21 @@ export function clearScene() {
     deselectObject();
 }
 
-// --- RENDER & ANIMATION ---
+// --- RENDERIZADO Y ANIMACIÓN ---
+/**
+ * Bucle de animación principal que se ejecuta en cada frame.
+ */
 function animate() {
     let dT = clock.getDelta();
-    if (dT > 0.1) dT = 0.1;
+    if (dT > 0.1) dT = 0.1; // Limita el delta de tiempo para evitar saltos.
+    
     scene.traverse(o => { if (o.userData.isQuizTrigger) o.rotation.y += 0.5 * dT; })
+
     if (isEditMode) {
         orbitControls.update();
     } else {
         handleMovement(dT);
+        // Lógica de gravedad para el jugador.
         const p = pointerLockControls.getObject();
         const onGroundRaycaster = new THREE.Raycaster(p.position, new THREE.Vector3(0, -1, 0));
         const floorCollidables = collidables.filter(c => c.userData.isFloor);
@@ -309,7 +352,8 @@ function animate() {
         }
         p.position.y += playerVelocity.y * dT;
 
-        if (p.position.y < -50) { // Respawn
+        // Respawn si el jugador cae.
+        if (p.position.y < -50) {
             const spawnPos = new THREE.Vector3(0, playerHeight, 5);
             if (roomGroups.length > 0) {
                 const spawnRoom = roomGroups[0];
@@ -323,7 +367,11 @@ function animate() {
     renderer.render(scene, camera);
 }
 
-// --- EVENT LISTENERS & CONTROLS ---
+// --- EVENTOS Y CONTROLES ---
+
+/**
+ * Maneja el movimiento del jugador basado en las teclas presionadas.
+ */
 function handleMovement(dT) {
     if (!pointerLockControls.isLocked && !renderer.xr.isPresenting) return;
     const p = pointerLockControls.getObject();
@@ -339,21 +387,24 @@ function handleMovement(dT) {
     if (mF !== 0) p.translateZ(-mF * moveSpeed * dT);
     if (mR !== 0) p.translateX(mR * moveSpeed * dT);
 
-    p.position.y = oP.y; // Prevent flying
+    p.position.y = oP.y; // Evita que el jugador vuele.
 
+    // Detección de colisiones simple.
     const finalPos = p.position.clone();
     const moveDist = oP.distanceTo(finalPos);
-
     if (moveDist > 0) {
         const moveDir = finalPos.clone().sub(oP).normalize();
         raycaster.set(oP, moveDir);
         const wallIntersects = raycaster.intersectObjects(collidables, true);
         if (wallIntersects.length > 0 && wallIntersects[0].distance < moveDist + 0.5) {
-            p.position.copy(oP); // Collision
+            p.position.copy(oP); // Si hay colisión, revierte el movimiento.
         }
     }
 }
 
+/**
+ * Configura los event listeners relacionados con la escena 3D.
+ */
 function setup3DEventListeners() {
     viewerOverlay.addEventListener('click', () => {
         pointerLockControls.lock();
@@ -386,6 +437,9 @@ function setup3DEventListeners() {
     renderer.domElement.addEventListener('mouseup', onCanvasMouseUp);
 }
 
+/**
+ * Ajusta el tamaño del renderer y la cámara cuando la ventana cambia de tamaño.
+ */
 function onWindowResize() {
     if (camera) {
         camera.aspect = window.innerWidth / window.innerHeight;
@@ -394,6 +448,9 @@ function onWindowResize() {
     }
 }
 
+/**
+ * Carga texturas, fuentes y otros assets necesarios para la escena.
+ */
 function loadAssets() {
     const textureLoader = new THREE.TextureLoader();
     for (const key in textureUrls) {
@@ -415,7 +472,11 @@ function loadAssets() {
     quizButtonTexture = generateButtonTexture('?', 'rgba(59, 130, 246, 0.8)');
 }
 
-// --- MODE SWITCHING ---
+// --- CAMBIO DE MODO (EDICIÓN/VISTA PREVIA) ---
+
+/**
+ * Cambia la aplicación al modo de edición (vista cenital).
+ */
 function switchToEditMode() {
     isEditMode = true;
     document.body.classList.remove('is-interacting');
@@ -436,6 +497,9 @@ function switchToEditMode() {
     if (viewerOverlay) viewerOverlay.style.display = 'none';
 }
 
+/**
+ * Cambia la aplicación al modo de vista previa (primera persona).
+ */
 export function switchToPreviewMode(force = false) {
     if (!isEditMode && !force) return;
     isEditMode = false;
@@ -463,13 +527,18 @@ export function switchToPreviewMode(force = false) {
     if (viewerOverlay) viewerOverlay.style.display = 'flex';
 }
 
-// --- OBJECT MANIPULATION & CREATION ---
+// --- CREACIÓN Y MANIPULACIÓN DE OBJETOS ---
+
+/**
+ * Maneja el evento de clic del ratón en el canvas 3D.
+ */
 function onCanvasMouseDown(event) {
     if (document.body.classList.contains('is-interacting')) return;
     const mouse = new THREE.Vector2((event.clientX / window.innerWidth) * 2 - 1, -(event.clientY / window.innerHeight) * 2 + 1);
     raycaster.setFromCamera(mouse, camera);
 
     if (isEditMode) {
+        // Lógica para los controles de sala (añadir, borrar, quiz).
         const controlIntersects = raycaster.intersectObjects(roomControlsGroup.children, true);
         if (controlIntersects.length > 0) {
              const { room, side, action } = controlIntersects[0].object.userData;
@@ -491,6 +560,7 @@ function onCanvasMouseDown(event) {
              return;
         }
 
+        // Lógica para seleccionar y arrastrar cuadros.
         const artworks = objects.filter(o => o.userData.isPainting || o.userData.isDrawingCanvas);
         const artIntersects = raycaster.intersectObjects(artworks, true);
         if (artIntersects.length > 0) {
@@ -502,6 +572,7 @@ function onCanvasMouseDown(event) {
             return;
         }
         
+        // Lógica para seleccionar salas.
         const roomIntersects = raycaster.intersectObjects(roomGroups, true);
         if (roomIntersects.length > 0) {
             const intersectedRoom = roomIntersects.find(i => i.object.userData.isFloor)?.object.userData.room;
@@ -514,10 +585,12 @@ function onCanvasMouseDown(event) {
         deselectObject();
 
     } else if (pointerLockControls.isLocked) {
+        // Lógica de interacción en modo primera persona.
         raycaster.setFromCamera({ x: 0, y: 0 }, camera);
         const intersects = raycaster.intersectObjects(scene.children, true);
         if (intersects.length === 0) return;
         
+        // Interactuar con un quiz.
         const quizIntersect = intersects.find(i => i.object.userData.isQuizTrigger);
         if (quizIntersect) {
             const room = quizIntersect.object.parent;
@@ -525,11 +598,13 @@ function onCanvasMouseDown(event) {
             return;
         }
 
+        // Hacer foco en un cuadro.
         const paintingIntersect = intersects.find(i => (i.object.parent && i.object.parent.userData.isPainting));
         if (paintingIntersect) {
              showFocusView(paintingIntersect.object.parent, getImageDataUrl); return;
         }
 
+        // Empezar a dibujar.
         const drawingCanvasIntersect = intersects.find(i => i.object.userData.isDrawingCanvas);
         if (drawingCanvasIntersect) {
             isDrawing = true;
@@ -550,6 +625,7 @@ function onCanvasMouseDown(event) {
             return;
         }
 
+        // Colocar un nuevo cuadro o pizarra.
         if (!isViewerMode) {
             const wallIntersect = intersects.find(i => i.object.userData.isWall);
             if (wallIntersect) {
@@ -567,7 +643,11 @@ function onCanvasMouseDown(event) {
     }
 }
 
+/**
+ * Maneja el movimiento del ratón para arrastrar objetos y dibujar.
+ */
 function onCanvasMouseMove(event) {
+    // Arrastrar cuadro
     if (selectedObject && selectedObject.userData.isPainting && !orbitControls.enabled) {
         const mouse = new THREE.Vector2((event.clientX / window.innerWidth) * 2 - 1, -(event.clientY / window.innerHeight) * 2 + 1);
         raycaster.setFromCamera(mouse, camera);
@@ -578,6 +658,7 @@ function onCanvasMouseMove(event) {
         return;
     }
 
+    // Dibujar en pizarra
     if (isDrawing && activeDrawingCanvas) {
         const rect = renderer.domElement.getBoundingClientRect();
         const mouse = new THREE.Vector2(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1);
@@ -592,336 +673,5 @@ function onCanvasMouseMove(event) {
             const y = (1 - uv.y) * canvas.height;
             context.lineTo(x, y);
             context.stroke();
-            texture.needsUpdate = true;
-        }
-    }
-}
-
-function onCanvasMouseUp() {
-    if (!orbitControls.enabled && selectedObject) {
-        orbitControls.enabled = true; 
-        markAsDirty();
-    }
-    if (isDrawing) {
-        isDrawing = false;
-        document.getElementById('drawing-controls').classList.add('hidden');
-        const pathRef = push(ref(db, `museums/${getCurrentMuseumId()}/drawings/${activeDrawingCanvas.userData.canvasId}`));
-        set(pathRef, { color: currentDrawingColor, points: currentDrawingPath });
-        activeDrawingCanvas = null;
-    }
-}
-
-function selectObject(object) {
-    if (selectedObject === object) return;
-    selectedObject = object;
-    selectionBox.setFromObject(selectedObject, true);
-    selectionBox.visible = true;
-    updateInfoPanel(selectedObject);
-}
-
-function deselectObject() {
-    if (selectedObject) {
-        selectedObject = null;
-        selectionBox.visible = false;
-        deselectObjectUI();
-    }
-}
-
-export function updateRoomDimensions(room, width, depth, height, shouldSelect = true) {
-    const oldWidth = room.userData.width;
-    const oldDepth = room.userData.depth;
-
-    const oldBBox = new THREE.Box3().setFromObject(room);
-    const artworksInRoom = objects.filter(o => (o.userData.isPainting || o.userData.isDrawingCanvas) && oldBBox.containsPoint(o.position));
-    const artworkData = artworksInRoom.map(art => ({
-        artwork: art,
-        localPos: art.position.clone().sub(room.position)
-    }));
-    
-    // Clean up old room from collidables/objects arrays
-    const oldCollidables = [];
-    room.traverse(child => { if (child.userData.isWallContainer || child.userData.isWall || child.userData.isFloor) oldCollidables.push(child); });
-    oldCollidables.forEach(c => { const index = collidables.indexOf(c); if(index > -1) collidables.splice(index,1); });
-    if(room.userData.quizTrigger) { const index = objects.indexOf(room.userData.quizTrigger); if(index > -1) objects.splice(index,1); }
-
-
-    const oldRoomIndex = roomGroups.indexOf(room); if (oldRoomIndex === -1) return;
-    const newRoom = createRoom(width, depth, height, room.position, room.userData.openings, room.userData.quiz, room.userData.textures, room.userData.id);
-    
-    room.clear(); room.removeFromParent();
-    roomGroups[oldRoomIndex] = newRoom;
-    scene.add(newRoom);
-    
-    newRoom.traverse(child => { 
-        if (child.userData.isWallContainer || child.userData.isWall || child.userData.isFloor) collidables.push(child);
-        if (child.userData.isQuizTrigger) objects.push(child);
-    });
-
-    artworkData.forEach(data => {
-        const scaledLocalPos = data.localPos.clone();
-        scaledLocalPos.x *= width / oldWidth;
-        scaledLocalPos.z *= depth / oldDepth;
-        data.artwork.position.copy(newRoom.position).add(scaledLocalPos);
-    });
-
-    if (shouldSelect) selectObject(newRoom);
-    markAsDirty();
-    updateRoomControls();
-}
-
-function createRoom(w, d, h, pos, openings = [], quizData, textures, id) {
-    const t = 0.5; const rG = new THREE.Group(); rG.position.copy(pos);
-    rG.userData = { id: id || THREE.MathUtils.generateUUID(), isRoom: true, walls: {}, openings, width: w, depth: d, height: h, quiz: quizData || null, textures: textures || { floor: 'marble', wall: 'wood', ceiling: 'marble' } };
-    const fM = new THREE.MeshStandardMaterial({ map: textureCache[rG.userData.textures.floor], side: THREE.DoubleSide }); const fG = new THREE.PlaneGeometry(w, d); const f = new THREE.Mesh(fG, fM); f.rotation.x = -Math.PI / 2; f.position.y = -h / 2; f.receiveShadow = true; f.userData.isFloor = true; f.userData.room = rG; rG.add(f);
-    const cM = new THREE.MeshStandardMaterial({ map: textureCache[rG.userData.textures.ceiling], side: THREE.DoubleSide }); const cG = new THREE.PlaneGeometry(w, d); const c = new THREE.Mesh(cG, cM); c.rotation.x = Math.PI / 2; c.position.y = h / 2; c.userData.isCeiling = true; rG.add(c);
-    const wD = [{ s: 'north', p: [0, 0, -d / 2], r: 0, l: w }, { s: 'south', p: [0, 0, d / 2], r: 0, l: w }, { s: 'west', p: [-w / 2, 0, 0], r: Math.PI / 2, l: d }, { s: 'east', p: [w / 2, 0, 0], r: Math.PI / 2, l: d }];
-    wD.forEach(d => { let wall; const data = { s: [d.l, h, t], p: d.p, rotY: d.r }; if (openings.includes(d.s)) wall = createWallWithOpening(data, rG.userData.textures.wall); else wall = createWall(data, rG.userData.textures.wall); wall.userData.side = d.s; rG.add(wall); rG.userData.walls[d.s] = wall; });
-
-    const light = new THREE.PointLight(0xffeedd, 1.5, Math.max(w, d, h) * 2); light.position.set(0, h / 2 - 1, 0); light.castShadow = true; light.shadow.mapSize.width = 1024; light.shadow.mapSize.height = 1024;
-    rG.add(light);
-
-    if (quizData && quizData.length > 0) {
-        const quizTrigger = createQuizTrigger();
-        quizTrigger.position.y = -h / 2 + 2;
-        rG.add(quizTrigger);
-        rG.userData.quizTrigger = quizTrigger;
-    }
-
-    rG.updateWorldMatrix(true, true); return rG;
-}
-
-function createWall(data, textureName) { const wM = new THREE.MeshStandardMaterial({ map: textureCache[textureName] }); const wG = new THREE.BoxGeometry(...data.s); const w = new THREE.Mesh(wG, wM); w.position.set(...data.p); if (data.rotY) w.rotation.y = data.rotY; w.castShadow = true; w.receiveShadow = true; w.userData.isWall = true; return w; }
-function createWallWithOpening(data, textureName, dW = 4, dH = 8) { const wG = new THREE.Group(); const wM = new THREE.MeshStandardMaterial({ map: textureCache[textureName] }); const tW = data.s[0], tH = data.s[1], t = data.s[2]; const sW = (tW - dW) / 2, lH = tH - dH; if (sW > 0.01) { const lGeo = new THREE.BoxGeometry(sW, tH, t); const lW = new THREE.Mesh(lGeo, wM.clone()); lW.position.x = -(dW / 2 + sW / 2); wG.add(lW); const rGeo = new THREE.BoxGeometry(sW, tH, t); const rW = new THREE.Mesh(rGeo, wM.clone()); rW.position.x = (dW / 2 + sW / 2); wG.add(rW); } if (lH > 0.01) { const lGeo = new THREE.BoxGeometry(dW, lH, t); const l = new THREE.Mesh(lGeo, wM.clone()); l.position.y = dH + lH / 2 - tH / 2; wG.add(l); } wG.children.forEach(c => { c.castShadow = true; c.receiveShadow = true; c.userData.isWall = true; }); wG.position.set(...data.p); if (data.rotY) wG.rotation.y = data.rotY; wG.userData.isWallContainer = true; return wG; }
-
-function addRoom(w, d, h, pos, openings = [], quizData = null, textures, fromLoad = false, id) {
-    const roomGroup = createRoom(w, d, h, pos, openings, quizData, textures, id);
-    scene.add(roomGroup); roomGroups.push(roomGroup);
-    roomGroup.traverse(child => {
-        if (child.userData.isWallContainer || child.userData.isWall || child.userData.isFloor) collidables.push(child);
-        if (child.userData.isQuizTrigger) objects.push(child);
-    });
-    if (!fromLoad) { markAsDirty(); selectObject(roomGroup); }
-    updateRoomControls();
-}
-
-function updateRoomControls() {
-    roomControlsGroup.clear();
-    const addMat = new THREE.MeshBasicMaterial({ map: addButtonTexture, transparent: true });
-    const deleteMat = new THREE.MeshBasicMaterial({ map: deleteButtonTexture, transparent: true });
-    const quizMat = new THREE.MeshBasicMaterial({ map: quizButtonTexture, transparent: true });
-
-    for (const room of roomGroups) {
-        const deleteButton = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), deleteMat);
-        deleteButton.position.copy(room.position); deleteButton.position.y += 0.1 - (room.userData.height / 2);
-        deleteButton.position.x -= 2.5; deleteButton.rotation.x = -Math.PI / 2;
-        deleteButton.userData = { room, action: 'delete' }; roomControlsGroup.add(deleteButton);
-
-        const quizButton = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), quizMat);
-        quizButton.position.copy(room.position); quizButton.position.y += 0.1 - (room.userData.height / 2);
-        quizButton.position.x += 2.5; quizButton.rotation.x = -Math.PI / 2;
-        quizButton.userData = { room, action: 'quiz' }; roomControlsGroup.add(quizButton);
-
-        for (const side of ['north', 'south', 'east', 'west']) {
-            if (room.userData.walls[side] && !room.userData.openings.includes(side)) {
-                const button = new THREE.Mesh(new THREE.PlaneGeometry(3, 3), addMat);
-                button.userData = { room, side, action: 'add' };
-                let offset = new THREE.Vector3();
-                if (side === 'north') offset.z = -room.userData.depth / 2 - 2.5; if (side === 'south') offset.z = room.userData.depth / 2 + 2.5;
-                if (side === 'east') offset.x = room.userData.width / 2 + 2.5; if (side === 'west') offset.x = -room.userData.width / 2 - 2.5;
-
-                const buttonPos = room.position.clone().add(offset);
-                let isOccupied = roomGroups.some(otherRoom => otherRoom !== room && new THREE.Box3().setFromObject(otherRoom).containsPoint(buttonPos));
-
-                if (!isOccupied) {
-                    button.position.copy(room.position).add(offset); button.position.y = 0.1 - (room.userData.height / 2);
-                    button.rotation.x = -Math.PI / 2; roomControlsGroup.add(button);
-                }
-            }
-        }
-    }
-    if (roomGroups.length === 0) {
-        const button = new THREE.Mesh(new THREE.PlaneGeometry(3, 3), addMat);
-        button.userData = { room: null, side: null, action: 'add_initial' };
-        button.position.y = 0.1 - 5; button.rotation.x = -Math.PI / 2; roomControlsGroup.add(button);
-    }
-}
-
-function deleteRoom(roomToDelete) {
-    if (roomGroups.length <= 1) {
-        showMessage("No se puede eliminar la última sala.", "error");
-        return;
-    }
-    deselectObject();
-    const artworksToRemove = objects.filter(obj => (obj.userData.isPainting || obj.userData.isDrawingCanvas) && new THREE.Box3().setFromObject(roomToDelete).containsPoint(obj.position));
-    artworksToRemove.forEach(obj => {
-        if (obj.userData.isDrawingCanvas) {
-            const { canvasId } = obj.userData;
-            const listener = drawingCanvases[canvasId]?.listener;
-            if(listener) listener();
-            delete drawingCanvases[canvasId];
-            remove(ref(db, `museums/${getCurrentMuseumId()}/drawings/${canvasId}`));
-        } else {
-             remove(ref(db, `images/${obj.userData.imageId}`));
-        }
-        const index = objects.indexOf(obj); if (index > -1) objects.splice(index, 1);
-        obj.removeFromParent();
-    });
-
-    const roomIndex = roomGroups.indexOf(roomToDelete); if (roomIndex > -1) roomGroups.splice(roomIndex, 1);
-    roomToDelete.removeFromParent();
-    updateRoomControls();
-    markAsDirty();
-}
-
-export function createQuizTrigger() {
-    if (!font) return new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0x3b82f6 }));
-    const geo = new TextGeometry('Q', { font, size: 1.5, height: 0.2, curveSegments: 12, bevelEnabled: true, bevelThickness: 0.1, bevelSize: 0.05, bevelOffset: 0, bevelSegments: 5 });
-    geo.computeBoundingBox(); geo.translate(-0.5 * (geo.boundingBox.max.x - geo.boundingBox.min.x), 0, 0);
-    const mat = new THREE.MeshStandardMaterial({ color: 0x3b82f6, metalness: 0.5, roughness: 0.3 });
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.userData.isQuizTrigger = true; mesh.visible = !isEditMode;
-    return mesh;
-}
-
-export function removeQuizTrigger(room) {
-    if (room.userData.quizTrigger) {
-        const trigger = room.userData.quizTrigger;
-        const index = objects.indexOf(trigger);
-        if (index > -1) {
-            objects.splice(index, 1);
-        }
-        trigger.removeFromParent();
-        room.userData.quizTrigger = null;
-    }
-}
-
-
-export async function placePainting(url, restoreData) {
-    return new Promise((resolve, reject) => {
-        const textureLoader = new THREE.TextureLoader();
-        textureLoader.load(url, (texture) => {
-            const maxDim = 4.0;
-            const aspect = texture.image ? (texture.image.naturalWidth / texture.image.naturalHeight) : 1;
-            const width = aspect >= 1 ? maxDim : maxDim * aspect;
-            const height = aspect >= 1 ? maxDim / aspect : maxDim;
-            const frameThickness = 0.2;
-            const paintingGroup = new THREE.Group();
-            const frameGeo = new THREE.BoxGeometry(width + frameThickness, height + frameThickness, frameThickness);
-            const frameMat = new THREE.MeshStandardMaterial({ color: 0x3a2414, roughness: 0.6, metalness: 0.4 });
-            const frame = new THREE.Mesh(frameGeo, frameMat); frame.castShadow = true; paintingGroup.add(frame);
-            const canvasGeo = new THREE.PlaneGeometry(width, height);
-            const canvasMat = new THREE.MeshLambertMaterial({ map: texture });
-            const canvas = new THREE.Mesh(canvasGeo, canvasMat); canvas.position.z = frameThickness / 2 + 0.01; paintingGroup.add(canvas);
-
-            paintingGroup.uuid = restoreData?.uuid || THREE.MathUtils.generateUUID();
-            paintingGroup.userData = {
-                isPainting: true,
-                infoText: restoreData?.infoText || "",
-                imageId: restoreData?.imageId,
-                initialWidth: width,
-                initialHeight: height
-            };
-
-            if (activePaintingIntersect) {
-                const intersect = activePaintingIntersect;
-                const worldNormal = new THREE.Vector3().copy(intersect.face.normal).transformDirection(intersect.object.matrixWorld);
-                paintingGroup.position.copy(intersect.point);
-                paintingGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), worldNormal);
-                paintingGroup.position.addScaledVector(worldNormal, frameThickness / 2 + 0.01);
-                markAsDirty();
-                activePaintingIntersect = null;
-            } else if (restoreData) {
-                paintingGroup.position.copy(restoreData.position);
-                paintingGroup.quaternion.copy(restoreData.quaternion);
-                paintingGroup.scale.copy(restoreData.scale);
-            }
-
-            scene.add(paintingGroup); objects.push(paintingGroup); resolve(paintingGroup);
-        }, undefined, () => reject(new Error('Failed to load painting texture.')));
-    });
-}
-
-function placeDrawingCanvas(intersect, restoreData) {
-    return new Promise((resolve) => {
-        const canvasId = restoreData?.canvasId || THREE.MathUtils.generateUUID();
-
-        const canvas = document.createElement('canvas');
-        canvas.width = 1024; canvas.height = 768;
-        const context = canvas.getContext('2d');
-        const texture = new THREE.CanvasTexture(canvas);
-        texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-
-        const drawingRef = ref(db, `museums/${getCurrentMuseumId()}/drawings/${canvasId}`);
-        const listener = onValue(drawingRef, (snapshot) => {
-            redrawCanvas(canvasId, snapshot.val());
-        });
-
-        drawingCanvases[canvasId] = { canvas, context, texture, listener };
-
-        const geo = new THREE.PlaneGeometry(4, 3);
-        const mat = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.8, metalness: 0.1 });
-        const mesh = new THREE.Mesh(geo, mat);
-
-        mesh.userData = {
-            isDrawingCanvas: true,
-            canvasId,
-            initialWidth: 4,
-            initialHeight: 3,
-            infoText: ''
-        };
-        mesh.uuid = restoreData?.uuid || THREE.MathUtils.generateUUID();
-
-        if (intersect) {
-            const worldNormal = new THREE.Vector3().copy(intersect.face.normal).transformDirection(intersect.object.matrixWorld);
-            mesh.position.copy(intersect.point);
-            mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), worldNormal);
-            mesh.position.addScaledVector(worldNormal, 0.1);
-            markAsDirty();
-        } else if (restoreData) {
-            mesh.position.copy(restoreData.position);
-            mesh.quaternion.copy(restoreData.quaternion);
-            mesh.scale.copy(restoreData.scale);
-        }
-
-        scene.add(mesh);
-        objects.push(mesh);
-        resolve(mesh);
-    });
-}
-
-function redrawCanvas(canvasId, paths) {
-    const drawing = drawingCanvases[canvasId];
-    if (!drawing) return;
-    const { canvas, context, texture } = drawing;
-
-    context.fillStyle = 'white';
-    context.fillRect(0, 0, canvas.width, canvas.height);
-
-    if (!paths) {
-        texture.needsUpdate = true;
-        return;
-    };
-
-    context.lineCap = 'round';
-    context.lineWidth = 5;
-
-    for (const pathId in paths) {
-        const path = paths[pathId];
-        if (!path.points || path.points.length < 2) continue;
-        context.strokeStyle = path.color;
-        context.beginPath();
-
-        let x = path.points[0] * canvas.width;
-        let y = (1 - path.points[1]) * canvas.height;
-        context.moveTo(x, y);
-
-        for (let i = 2; i < path.points.length; i += 2) {
-            x = path.points[i] * canvas.width;
-            y = (1 - path.points[i + 1]) * canvas.height;
-            context.lineTo(x, y);
-        }
-        context.stroke();
-    }
-    texture.needsUpdate = true;
-}
+            texture.needs
 
