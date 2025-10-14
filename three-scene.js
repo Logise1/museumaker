@@ -211,6 +211,7 @@ export function saveMuseumToDB(db, museumId, isViewerMode, onComplete) {
                 position: { x: o.position.x, y: o.position.y, z: o.position.z },
                 quaternion: { x: o.quaternion.x, y: o.quaternion.y, z: o.quaternion.z, w: o.quaternion.w },
                 scale: { x: o.scale.x, y: o.scale.y, z: o.scale.z },
+                // *** REVERTIDO: Se guarda el ID de la imagen en lugar de la URL. ***
                 imageId: o.userData.imageId || null,
                 infoText: o.userData.infoText || "",
             };
@@ -263,6 +264,7 @@ async function loadMuseumState(state) {
                     if (artworkData.type === 'drawing') {
                         promises.push(placeDrawingCanvas(null, artworkData));
                     } else {
+                        // *** REVERTIDO: Usa getImageDataUrl para obtener el base64 de la RTDB. ***
                         promises.push(
                             getImageDataUrl(artworkData.imageId).then(imageUrl => {
                                 if (imageUrl) return placePainting(imageUrl, null, artworkData);
@@ -284,7 +286,7 @@ async function loadMuseumState(state) {
 }
 
 /**
- * Obtiene la URL de una imagen (en base64) desde Firebase.
+ * *** REVERTIDO: Obtiene la URL de una imagen (en base64) desde Firebase RTDB. ***
  */
 async function getImageDataUrl(imageId) {
     if (!imageId) return null;
@@ -601,6 +603,7 @@ function onCanvasMouseDown(event) {
         // Hacer foco en un cuadro.
         const paintingIntersect = intersects.find(i => (i.object.parent && i.object.parent.userData.isPainting));
         if (paintingIntersect) {
+             // *** REVERTIDO: Pasa la función getImageDataUrl a showFocusView. ***
              showFocusView(paintingIntersect.object.parent, getImageDataUrl); return;
         }
 
@@ -889,7 +892,8 @@ function deleteRoom(roomToDelete) {
             delete drawingCanvases[canvasId];
             remove(ref(db, `museums/${getCurrentMuseumId()}/drawings/${canvasId}`));
         } else {
-             remove(ref(db, `images/${obj.userData.imageId}`));
+            // *** REVERTIDO: Elimina la imagen de la RTDB. ***
+            remove(ref(db, `images/${obj.userData.imageId}`));
         }
         const index = objects.indexOf(obj); if (index > -1) objects.splice(index, 1);
         obj.removeFromParent();
@@ -953,6 +957,7 @@ export async function placePainting(url, restoreData) {
             paintingGroup.userData = {
                 isPainting: true,
                 infoText: restoreData?.infoText || "",
+                // *** REVERTIDO: Guarda el ID de la imagen en lugar de la URL. ***
                 imageId: restoreData?.imageId,
                 initialWidth: width,
                 initialHeight: height
