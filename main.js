@@ -187,12 +187,7 @@ const uiCallbacks = {
         room.add(trigger);
         room.userData.quizTrigger = trigger;
     },
-    removeQuizTriggerFromRoom: (room) => {
-        if (room.userData.quizTrigger) {
-            room.userData.quizTrigger.removeFromParent();
-            room.userData.quizTrigger = null;
-        }
-    }
+    removeQuizTriggerFromRoom: (room) => removeQuizTrigger(room)
 };
 
 // --- INITIALIZATION ---
