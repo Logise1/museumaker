@@ -779,6 +779,19 @@ export function createQuizTrigger() {
     return mesh;
 }
 
+export function removeQuizTrigger(room) {
+    if (room.userData.quizTrigger) {
+        const trigger = room.userData.quizTrigger;
+        const index = objects.indexOf(trigger);
+        if (index > -1) {
+            objects.splice(index, 1);
+        }
+        trigger.removeFromParent();
+        room.userData.quizTrigger = null;
+    }
+}
+
+
 export async function placePainting(url, restoreData) {
     return new Promise((resolve, reject) => {
         const textureLoader = new THREE.TextureLoader();
