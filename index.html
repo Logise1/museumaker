@@ -1,13 +1,17 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+    <!-- Configuración básica del documento: codificación, vista móvil y título -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Creador de Museos 3D</title>
+    <!-- Inclusión de la librería de estilos Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Importación de la fuente 'Inter' desde Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Estilos CSS personalizados para la aplicación -->
     <style>
         body { margin: 0; overflow: hidden; font-family: 'Inter', sans-serif; background-color: #f1f5f9; }
         .hidden { display: none !important; }
@@ -46,7 +50,8 @@
 </head>
 <body>
 
-    <!-- ===== AUTH VIEW ===== -->
+    <!-- ===== VISTA DE AUTENTICACIÓN ===== -->
+    <!-- Contenedor para el formulario de inicio de sesión y registro. -->
     <div id="auth-container" class="view-container">
         <div class="form-card">
             <h1 class="text-3xl font-bold text-slate-800 mb-2">Bienvenido a Museumaker</h1>
@@ -67,7 +72,8 @@
         </div>
     </div>
 
-    <!-- ===== DASHBOARD VIEW ===== -->
+    <!-- ===== VISTA DEL PANEL DE CONTROL (DASHBOARD) ===== -->
+    <!-- Muestra la lista de museos del usuario y permite crear nuevos. -->
     <div id="dashboard-container" class="view-container hidden">
         <div class="dashboard-card">
             <div class="flex justify-between items-center mb-6 pb-4 border-b">
@@ -76,14 +82,14 @@
             </div>
             <div class="flex-grow overflow-y-auto pr-2">
                 <div id="museums-list" class="space-y-3">
-                    <!-- Museum items will be injected here -->
+                    <!-- Los elementos de la lista de museos se inyectarán aquí dinámicamente. -->
                 </div>
             </div>
             <button id="create-museum-btn" class="btn btn-primary mt-6">Crear Nuevo Museo</button>
         </div>
     </div>
     
-    <!-- ===== CREATE MUSEUM MODAL ===== -->
+    <!-- ===== MODAL PARA CREAR MUSEO ===== -->
     <div id="create-museum-modal" class="modal hidden">
         <div class="modal-content">
             <h2 class="text-2xl font-bold mb-4 text-slate-800">Crear Nuevo Museo</h2>
@@ -99,7 +105,7 @@
         </div>
     </div>
 
-     <!-- ===== DELETE CONFIRMATION MODAL ===== -->
+     <!-- ===== MODAL DE CONFIRMACIÓN DE BORRADO ===== -->
     <div id="delete-confirm-modal" class="modal hidden">
         <div class="modal-content">
             <h2 class="text-2xl font-bold mb-2 text-slate-800">¿Estás seguro?</h2>
@@ -111,11 +117,13 @@
         </div>
     </div>
 
-    <!-- ===== EDITOR/VIEWER APP CONTAINER ===== -->
+    <!-- ===== CONTENEDOR PRINCIPAL DEL EDITOR/VISOR ===== -->
+    <!-- Aquí es donde se renderizará la escena 3D de Three.js. -->
     <div id="app-container" class="hidden">
+        <!-- Capa superpuesta para iniciar el modo de primera persona. -->
         <div id="viewer-overlay" class="absolute inset-0 bg-slate-900/50 flex flex-col justify-center items-center text-white cursor-pointer z-20">
-            <!-- Clean overlay -->
         </div>
+        <!-- Barra de herramientas superior del editor. -->
         <div id="editor-top-bar">
             <button id="back-to-dashboard-btn" class="btn btn-secondary btn-sm">← Volver al Panel</button>
             <div class="text-slate-800 font-semibold" id="museum-name-display"></div>
@@ -123,9 +131,11 @@
                  <button id="add-drawing-canvas-btn" class="btn btn-secondary btn-sm">Añadir Pizarra</button>
                  <button id="save-changes-btn" class="btn btn-secondary btn-sm" disabled>Guardado</button>
                  <button id="publish-btn" class="btn btn-primary btn-sm">Publicar</button>
+                 <!-- Contenedor para el botón de Realidad Virtual (VR). -->
                  <div id="vr-button-container"></div>
             </div>
         </div>
+        <!-- Modal para añadir un nuevo cuadro. -->
         <div id="painting-modal" class="modal hidden">
             <div class="modal-content">
                 <h2 class="text-2xl font-bold mb-4 text-slate-800">Añadir un Cuadro</h2>
@@ -136,6 +146,7 @@
                 </div>
             </div>
         </div>
+        <!-- Modal que se muestra al publicar un museo, con el enlace para compartir. -->
         <div id="publish-modal" class="modal hidden">
             <div class="modal-content">
                  <h2 class="text-2xl font-bold mb-4 text-slate-800">¡Museo Publicado!</h2>
@@ -150,13 +161,15 @@
                  </div>
             </div>
         </div>
-        <!-- QUIZ MODALS -->
+        
+        <!-- ===== MODALES DEL QUIZ ===== -->
+        <!-- Modal para editar las preguntas y respuestas de un quiz. -->
         <div id="quiz-modal" class="modal hidden">
             <div class="modal-content max-h-[90vh]">
                 <div class="flex justify-between items-center mb-4">
                     <h2 class="text-2xl font-bold text-slate-800">Editar Quiz</h2>
                     <div id="quiz-question-nav" class="flex items-center gap-2 text-sm">
-                        <!-- Question navigation will be injected here -->
+                        <!-- Navegación entre preguntas (botones numéricos). -->
                     </div>
                 </div>
                 <div id="quiz-editor-content" class="flex-grow overflow-y-auto pr-2">
@@ -165,7 +178,7 @@
                         <input type="text" id="quiz-question" placeholder="¿Cuál es el nombre de esta obra?">
                     </div>
                     <div id="quiz-options-container" class="space-y-2">
-                        <!-- Options will be dynamically added here -->
+                        <!-- Opciones de respuesta. -->
                     </div>
                 </div>
                 <div class="flex gap-2 mt-4 pt-4 border-t">
@@ -178,30 +191,29 @@
                 </div>
             </div>
         </div>
-
+        <!-- Modal para que el visitante realice el quiz. -->
         <div id="take-quiz-modal" class="modal hidden">
              <div class="modal-content">
                 <p id="quiz-progress" class="text-center text-slate-500 mb-2 font-semibold"></p>
                 <h2 id="take-quiz-question" class="text-2xl font-bold mb-6 text-slate-800 text-center"></h2>
                 <div id="take-quiz-options" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <!-- Answer buttons will be injected here -->
+                    <!-- Botones de respuesta para el visitante. -->
                 </div>
             </div>
         </div>
-        
+        <!-- Modal para mostrar la tabla de clasificación (leaderboard) al final del quiz. -->
         <div id="leaderboard-modal" class="modal hidden">
             <div class="modal-content max-h-[90vh]">
                 <h2 class="text-2xl font-bold mb-2 text-slate-800">Quiz Completado</h2>
                 <p id="leaderboard-time-info" class="text-slate-600 mb-4 text-center"></p>
                 <h3 class="text-lg font-semibold mb-3 text-slate-700">Tiempos Más Rápidos</h3>
                 <div id="leaderboard-list" class="space-y-2 flex-grow overflow-y-auto pr-2">
-                    <!-- Leaderboard entries go here -->
+                    <!-- Lista de puntuaciones. -->
                 </div>
                 <button id="close-leaderboard-btn" class="btn btn-primary btn-full mt-6">Cerrar</button>
             </div>
         </div>
-        
-        <!-- ===== NAME PROMPT MODAL (NEW) ===== -->
+        <!-- Modal para pedir el nombre del jugador anónimo para el leaderboard. -->
         <div id="name-prompt-modal" class="modal hidden">
             <div class="modal-content">
                 <h2 class="text-2xl font-bold mb-2 text-slate-800">¡Felicidades!</h2>
@@ -217,9 +229,10 @@
             </div>
         </div>
 
-        <!-- ===== NEW DYNAMIC INFO PANEL ===== -->
+        <!-- ===== PANEL DE INFORMACIÓN Y EDICIÓN ===== -->
+        <!-- Panel lateral que cambia de contenido según el objeto seleccionado. -->
         <div id="info-panel" class="hidden">
-            <!-- 1. Default View -->
+            <!-- Vista por defecto del panel. -->
             <div id="info-panel-default">
                  <h1 class="text-xl font-bold mb-4 text-slate-800">Modo Edición</h1>
                  <p class="text-sm text-slate-600 mb-4">Haz clic sobre un objeto (sala, cuadro) para ver sus propiedades.</p>
@@ -228,7 +241,7 @@
                     <div><h2 class="font-semibold text-slate-700">Añadir Cuadros/Pizarras</h2><p class="text-sm text-slate-600">Entra en 'Visitar Museo', mira a una pared y haz clic para añadir un cuadro. O usa el botón 'Añadir Pizarra' y luego haz clic en una pared.</p></div>
                  </div>
             </div>
-            <!-- 2. Room Editor View -->
+            <!-- Vista para editar una sala. -->
             <div id="info-panel-room" class="hidden">
                 <h1 class="text-xl font-bold mb-4 text-slate-800">Editar Sala</h1>
                 <div class="input-group">
@@ -257,7 +270,7 @@
                     <div id="ceiling-texture-selector" class="grid grid-cols-4 gap-2"></div>
                 </div>
             </div>
-             <!-- 3. Painting Editor View -->
+             <!-- Vista para editar un cuadro o pizarra. -->
             <div id="info-panel-painting" class="hidden">
                  <h1 class="text-xl font-bold mb-4 text-slate-800">Editar Cuadro</h1>
                  <div class="input-group">
@@ -274,7 +287,7 @@
                  </div>
                  <button id="delete-painting-btn" class="btn btn-danger btn-full mt-2">Eliminar Obra</button>
             </div>
-             <!-- 4. General Settings View -->
+             <!-- Vista para ajustes generales del museo. -->
             <div id="info-panel-settings" class="hidden">
                 <h1 class="text-xl font-bold mb-4 text-slate-800">Ajustes Generales</h1>
                 <div class="mt-4">
@@ -282,35 +295,38 @@
                     <div id="music-selector" class="space-y-2"></div>
                 </div>
             </div>
-            <!-- Panel Footer -->
+            <!-- Pie del panel con botones comunes. -->
             <hr class="my-4 border-slate-300">
             <div class="flex gap-2">
                 <button id="settings-btn" class="btn btn-secondary btn-full">Ajustes</button>
                 <button id="preview-btn" class="btn btn-primary btn-full">Visitar Museo</button>
             </div>
         </div>
+        
+        <!-- Elementos de la interfaz superpuestos en la escena 3D. -->
         <div id="crosshair"></div>
         <div id="instructions" class="hidden"><b>WASD</b>: Mover | <b>Clic</b>: Interactuar | <b>Arrastrar</b>: Dibujar | <b>ESC</b>: Salir</div>
         <div id="music-player" class="hidden absolute bottom-4 left-4 z-20">
             <button id="mute-btn" class="w-12 h-12 bg-slate-800/50 text-white rounded-full flex justify-center items-center backdrop-blur-sm shadow-lg">
-                <!-- SVG icon for mute/unmute -->
+                <!-- El icono de mute/unmute se inyecta aquí. -->
             </button>
         </div>
         <div id="drawing-controls" class="hidden absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 bg-slate-800/50 p-2 rounded-lg backdrop-blur-sm z-20">
-            <!-- Color swatches are injected here -->
+            <!-- La paleta de colores para dibujar se inyecta aquí. -->
         </div>
         <audio id="background-audio" loop></audio>
     </div>
     
-    <!-- ===== PICTURE FOCUS VIEW ===== -->
+    <!-- ===== VISTA DE FOCO EN IMAGEN ===== -->
+    <!-- Modal grande para mostrar una imagen y su información en detalle. -->
     <div id="focus-view-modal" class="modal hidden">
         <div class="w-full h-full flex justify-center items-center p-4 md:p-8">
             <div class="w-full max-w-6xl max-h-[90vh] flex flex-col md:flex-row gap-6 bg-white rounded-xl shadow-2xl p-6">
-                <!-- Image Container -->
+                <!-- Contenedor de la imagen. -->
                 <div class="flex-grow flex justify-center items-center bg-gray-100 rounded-lg overflow-hidden">
                      <img id="focus-image" src="" class="max-w-full max-h-full object-contain">
                 </div>
-                <!-- Info Panel -->
+                <!-- Panel de información del cuadro. -->
                 <div id="focus-info" class="flex-shrink-0 md:w-80 overflow-y-auto text-slate-700 p-4 bg-gray-50 rounded-lg">
                     <h3 class="text-xl font-bold text-slate-800 border-b pb-2 mb-4">Información de la Obra</h3>
                     <p id="focus-text" class="text-base text-slate-600 whitespace-pre-wrap"></p>
@@ -318,8 +334,19 @@
             </div>
         </div>
     </div>
+    <!-- Elemento de audio para previsualizar pistas de música. -->
     <audio id="preview-audio"></audio>
 
+    <!-- Mapa de importaciones para resolver los módulos de Three.js -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.163.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/"
+            }
+        }
+    </script>
+    <!-- Importación del script principal como módulo para permitir import/export. -->
     <script type="module" src="main.js"></script>
 </body>
 </html>
