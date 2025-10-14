@@ -1,8 +1,8 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { getDatabase, ref, set, onValue, push, remove, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
-import { initUI, showView, renderDashboard, showModal, showMessage } from './ui-handler.js';
-import { init3D, listenToMuseumData, saveMuseumToDB, clearScene, getRenderer, isDataLoaded, setPlacingDrawingCanvas, switchToPreviewMode } from './three-scene.js';
+import { initUI, showView, renderDashboard, showModal, hideModal } from './ui-handler.js';
+import { init3D, listenToMuseumData, saveMuseumToDB, switchToPreviewMode, setPlacingDrawingCanvas, clearScene } from './three-scene.js';
 
 // --- FIREBASE CONFIG ---
 const firebaseConfig = {
@@ -20,23 +20,54 @@ const auth = getAuth(app);
 const db = getDatabase(app);
 
 // --- GLOBAL STATE ---
-let currentUser = null, currentMuseumId = null;
+let currentUser = null;
+let currentMuseumId = null;
+let currentMuseumName = "";
 let isViewerMode = false;
-let museumDataListener = null;
+let museumDataListenerUnsubscribe = null;
+let isDataLoaded = false;
+let saveTimeout;
+let lastSaveTime = 0;
+let isDirty = false;
+let museumToDelete = { id: null, name: null };
+
+// --- CORE LOGIC ---
+
+function markAsDirty() {
+    if (isViewerMode || !isDataLoaded) return;
+    isDirty = true;
+    requestSave();
+}
+
+function requestSave() {
+    clearTimeout(saveTimeout);
+    const now = Date.now();
+    // Save immediately if it's been a while, otherwise debounce
+    if (now - lastSaveTime > 10000) { 
+        saveCurrentMuseum();
+    } else {
+        saveTimeout = setTimeout(saveCurrentMuseum, 3000);
+    }
+}
+
+function saveCurrentMuseum(onComplete) {
+    if (!isDirty || isViewerMode || !currentMuseumId) {
+        if (onComplete) onComplete();
+        return;
+    }
+    isDirty = false;
+    lastSaveTime = Date.now();
+    saveMuseumToDB(db, currentMuseumId, isViewerMode, onComplete);
+}
+
 
 // --- AUTHENTICATION ---
 onAuthStateChanged(auth, (user) => {
     currentUser = user;
     if (user) {
         if (!isViewerMode) {
-            const museumsRef = ref(db, `users/${user.uid}/museums`);
-            renderDashboard(museumsRef, startEditor, (id, name) => {
-                const modal = document.getElementById('delete-confirm-modal');
-                modal.dataset.museumId = id;
-                modal.dataset.museumName = name;
-                document.getElementById('deleting-museum-name').textContent = name;
-                showModal('delete-confirm-modal');
-            });
+            const museumsRef = ref(db, `users/${currentUser.uid}/museums`);
+            renderDashboard(museumsRef, startEditor, confirmMuseumDelete);
             showView('dashboard');
         }
     } else {
@@ -44,17 +75,22 @@ onAuthStateChanged(auth, (user) => {
             signInAnonymously(auth).catch(error => console.error("Anonymous sign-in failed:", error));
         } else {
             showView('auth');
-            const renderer = getRenderer();
-            if (renderer) {
-                renderer.dispose();
-                const canvas = document.querySelector('#app-container canvas');
-                if(canvas) canvas.remove();
-            }
+            const renderer = document.querySelector('#app-container canvas');
+            if(renderer) renderer.remove();
         }
     }
 });
 
-// --- APPLICATION START & VIEW CONTROL ---
+function confirmMuseumDelete(id, name) {
+    museumToDelete = { id, name };
+    const modal = document.getElementById('delete-confirm-modal');
+    document.getElementById('deleting-museum-name').textContent = name;
+    modal.dataset.museumId = id; // Store for the handler
+    showModal('delete-confirm-modal');
+}
+
+// --- APPLICATION FLOW ---
+
 function checkViewerMode() {
     const urlParams = new URLSearchParams(window.location.search);
     const viewId = urlParams.get('view');
@@ -66,12 +102,14 @@ function checkViewerMode() {
 
 function startEditor(museumId, museumName) {
     currentMuseumId = museumId;
+    currentMuseumName = museumName;
     isViewerMode = false;
     document.getElementById('museum-name-display').textContent = museumName;
     document.getElementById('editor-top-bar').classList.remove('hidden');
     showView('app');
     init3D(isViewerMode, markAsDirty, db, () => currentMuseumId, () => currentUser);
-    museumDataListener = listenToMuseumData(db, currentMuseumId, isViewerMode, currentUser, goBackToDashboard);
+    if (museumDataListenerUnsubscribe) museumDataListenerUnsubscribe();
+    museumDataListenerUnsubscribe = listenToMuseumData(db, currentMuseumId, isViewerMode, currentUser, goBackToDashboard);
 }
 
 function startViewer(museumId) {
@@ -80,111 +118,71 @@ function startViewer(museumId) {
     document.getElementById('editor-top-bar').classList.add('hidden');
     showView('app');
     init3D(isViewerMode, markAsDirty, db, () => currentMuseumId, () => currentUser);
-    museumDataListener = listenToMuseumData(db, currentMuseumId, isViewerMode, currentUser, goBackToDashboard);
+    if (museumDataListenerUnsubscribe) museumDataListenerUnsubscribe();
+    museumDataListenerUnsubscribe = listenToMuseumData(db, currentMuseumId, isViewerMode, currentUser, goBackToDashboard);
 }
 
 function goBackToDashboard() {
-    if (museumDataListener) {
-        museumDataListener(); // This is the unsubscribe function returned by onValue
-        museumDataListener = null;
-    }
+    if (museumDataListenerUnsubscribe) museumDataListenerUnsubscribe();
     currentMuseumId = null;
+    isDataLoaded = false;
     clearScene();
     showView('dashboard');
 }
 
-// --- Museum Data Handling ---
-async function createNewMuseum(museumName) {
-    if (!museumName || !currentUser) return;
-
-    const newMuseumRef = push(ref(db, `museums`));
-    const museumId = newMuseumRef.key;
-
-    const initialRoom = {
-        position: { x: 0, y: 0, z: 0 },
-        openings: [], width: 20, depth: 20, height: 10, artworks: []
-    };
-    const initialData = {
-        owner: currentUser.uid,
-        name: museumName,
-        createdAt: serverTimestamp(),
-        isPublic: false,
-        data: { rooms: [initialRoom], settings: { floorTexture: 'marble', wallTexture: 'wood', ceilingTexture: 'marble', music: 'none' } }
-    };
-    await set(newMuseumRef, initialData);
-    await set(ref(db, `users/${currentUser.uid}/museums/${museumId}`), { name: museumName });
-
-    startEditor(museumId, museumName);
-}
-
-async function deleteMuseum(museumId) {
-    if (!museumId || !currentUser) return;
-    await remove(ref(db, `museums/${museumId}`));
-    await remove(ref(db, `users/${currentUser.uid}/museums/${museumId}`));
-}
-
-async function publishMuseum() {
-    // Await the save operation before publishing
-    await new Promise(resolve => saveMuseumToDB(db, currentMuseumId, isViewerMode, resolve));
-    
-    if (!currentMuseumId) return;
-    await set(ref(db, `museums/${currentMuseumId}/isPublic`), true);
-    const url = `${window.location.origin}${window.location.pathname}?view=${currentMuseumId}`;
-    return url;
-}
-
-
-// --- Saving ---
-let saveTimeout;
-let lastSaveTime = 0;
-let isDirty = false;
-
-function markAsDirty() {
-    if (isViewerMode || !isDataLoaded()) return;
-    if (isDirty) return; // Don't queue multiple saves
-    isDirty = true;
-    requestSave();
-}
-
-function requestSave() {
-    clearTimeout(saveTimeout);
-    const now = Date.now();
-    // Save immediately if it's been a while, otherwise debounce
-    if (now - lastSaveTime > 5000) {
-        saveAndReset();
-    } else {
-        saveTimeout = setTimeout(saveAndReset, 2000);
-    }
-}
-
-function saveAndReset() {
-    if (!isDirty) return;
-    saveMuseumToDB(db, currentMuseumId, isViewerMode, () => {
-        isDirty = false;
-        lastSaveTime = Date.now();
-        console.log("Save complete.");
-    });
-}
-
-// Initialize UI with callbacks
-initUI({
-    // Auth
+// --- UI CALLBACKS ---
+const uiCallbacks = {
     login: (email, password) => signInWithEmailAndPassword(auth, email, password),
     signup: (email, password) => createUserWithEmailAndPassword(auth, email, password),
     logout: () => signOut(auth),
-    // Museum
-    createMuseum: createNewMuseum,
-    deleteMuseum: deleteMuseum,
-    publishMuseum: publishMuseum,
+    createMuseum: async (museumName) => {
+        if (!currentUser) return;
+        const newMuseumRef = push(ref(db, `museums`));
+        const museumId = newMuseumRef.key;
+        const initialRoom = {
+            id: 'initial',
+            position: { x: 0, y: 0, z: 0 },
+            openings: [],
+            width: 20,
+            depth: 20,
+            height: 10,
+            artworks: []
+        };
+        await set(newMuseumRef, {
+            owner: currentUser.uid,
+            name: museumName,
+            createdAt: serverTimestamp(),
+            isPublic: false,
+            data: { rooms: [initialRoom], settings: { floorTexture: 'marble', wallTexture: 'wood', ceilingTexture: 'marble', music: 'none' } }
+        });
+        await set(ref(db, `users/${currentUser.uid}/museums/${museumId}`), { name: museumName });
+        startEditor(museumId, museumName);
+    },
+    deleteMuseum: async (museumId) => {
+        if (!museumId || !currentUser) return;
+        await remove(ref(db, `museums/${museumId}`));
+        await remove(ref(db, `users/${currentUser.uid}/museums/${museumId}`));
+    },
     goBack: goBackToDashboard,
-    // Editor Actions
+    publishMuseum: async () => {
+        return new Promise((resolve) => {
+            saveCurrentMuseum(() => {
+                if (!currentMuseumId) return resolve(null);
+                set(ref(db, `museums/${currentMuseumId}/isPublic`), true);
+                const url = `${window.location.origin}${window.location.pathname}?view=${currentMuseumId}`;
+                resolve(url);
+            });
+        });
+    },
     addDrawing: () => {
         setPlacingDrawingCanvas(true);
-        showMessage("Entra en 'Visitar Museo' y haz clic en una pared para colocar la pizarra.");
         switchToPreviewMode();
     },
-    switchToPreview: () => switchToPreviewMode()
-});
+    switchToPreview: () => switchToPreviewMode(),
+    markAsDirty: markAsDirty,
+};
 
+// --- INITIALIZATION ---
+initUI(uiCallbacks);
 checkViewerMode();
 
