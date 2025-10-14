@@ -15,7 +15,6 @@ let markAsDirty, db, getCurrentMuseumId, getCurrentUser;
 let addButtonTexture, deleteButtonTexture, quizButtonTexture;
 let font;
 let roomControlsGroup;
-let isInteractingWithUI = false, draggedObject = null;
 let activePaintingIntersect = null;
 let viewerOverlay;
 let lastPlayerPosition = new THREE.Vector3(0, 5, 0), lastPlayerQuaternion = new THREE.Quaternion();
@@ -34,7 +33,7 @@ let isDrawing = false, activeDrawingCanvas = null, currentDrawingPath = [];
 export let currentDrawingColor = '#000000';
 export const drawingCanvases = {};
 
-const textureUrls = {
+export const textureUrls = {
     marble: 'https://museumaker.netlify.app/assets/marble.jpg',
     wood: 'https://museumaker.netlify.app/assets/wood.jpg',
     darkwood: 'https://museumaker.netlify.app/assets/darkwood.jpg',
@@ -215,7 +214,6 @@ async function loadMuseumState(state) {
             backgroundAudio.src = `assets/music/${currentMusic}`;
             backgroundAudio.load();
             musicPlayer.classList.remove('hidden');
-            // updateMuteButtonUI(); in ui-handler will handle the icon
         } else {
             musicPlayer.classList.add('hidden');
         }
@@ -293,7 +291,6 @@ function animate() {
         orbitControls.update();
     } else {
         handleMovement(dT);
-        // Gravity and physics
         const p = pointerLockControls.getObject();
         const onGroundRaycaster = new THREE.Raycaster(p.position, new THREE.Vector3(0, -1, 0));
         const floorCollidables = collidables.filter(c => c.userData.isFloor);
@@ -308,7 +305,7 @@ function animate() {
         }
         p.position.y += playerVelocity.y * dT;
 
-        if (p.position.y < -50) { // Respawn if fallen
+        if (p.position.y < -50) { // Respawn
             const spawnPos = new THREE.Vector3(0, playerHeight, 5);
             if (roomGroups.length > 0) {
                 const spawnRoom = roomGroups[0];
@@ -348,7 +345,7 @@ function handleMovement(dT) {
         raycaster.set(oP, moveDir);
         const wallIntersects = raycaster.intersectObjects(collidables, true);
         if (wallIntersects.length > 0 && wallIntersects[0].distance < moveDist + 0.5) {
-            p.position.copy(oP); // Collision detected, revert position
+            p.position.copy(oP); // Collision
         }
     }
 }
@@ -360,9 +357,9 @@ function setup3DEventListeners() {
             document.getElementById('background-audio').play().catch(e => console.log('Playback requires user interaction.'));
         }
     });
-    pointerLockControls.addEventListener('lock', () => { isInteractingWithUI = false; document.body.classList.remove('is-interacting'); viewerOverlay.style.display = 'none'; document.getElementById('instructions').classList.remove('hidden'); });
+    pointerLockControls.addEventListener('lock', () => { document.body.classList.remove('is-interacting'); viewerOverlay.style.display = 'none'; document.getElementById('instructions').classList.remove('hidden'); });
     pointerLockControls.addEventListener('unlock', () => {
-        if (document.body.classList.contains('is-interacting')) return; // Don't show overlay if a modal is open
+        if (document.body.classList.contains('is-interacting')) return;
         viewerOverlay.style.display = 'flex';
         document.getElementById('instructions').classList.add('hidden');
         document.getElementById('drawing-controls').classList.add('hidden');
@@ -373,7 +370,6 @@ function setup3DEventListeners() {
     document.addEventListener('keydown', (e) => {
         keysPressed[e.code] = true;
         if (e.code === 'Escape' && pointerLockControls.isLocked) {
-             isInteractingWithUI = true;
              document.body.classList.add('is-interacting');
              pointerLockControls.unlock();
              if(!isViewerMode) switchToEditMode();
@@ -439,7 +435,6 @@ function switchToEditMode() {
 export function switchToPreviewMode(force = false) {
     if (!isEditMode && !force) return;
     isEditMode = false;
-    draggedObject = null;
     roomControlsGroup.visible = false;
     deselectObject();
     const player = pointerLockControls.getObject();
@@ -465,13 +460,6 @@ export function switchToPreviewMode(force = false) {
 }
 
 // --- OBJECT MANIPULATION & CREATION ---
-// ... (All functions related to creating, deleting, updating rooms, paintings, etc.)
-// ... onCanvasMouseDown, onCanvasMouseMove, onCanvasMouseUp
-// ... selectObject, deselectObject
-// ... updateRoomDimensions, createRoom, addRoom, deleteRoom
-// ... placePainting, placeDrawingCanvas, redrawCanvas
-// ... createQuizTrigger, updateRoomControls
-
 function onCanvasMouseDown(event) {
     if (document.body.classList.contains('is-interacting')) return;
     const mouse = new THREE.Vector2((event.clientX / window.innerWidth) * 2 - 1, -(event.clientY / window.innerHeight) * 2 + 1);
@@ -504,24 +492,26 @@ function onCanvasMouseDown(event) {
         if (artIntersects.length > 0) {
             const artObject = artIntersects[0].object.parent?.userData.isPainting || artIntersects[0].object.parent?.userData.isDrawingCanvas ? artIntersects[0].object.parent : artIntersects[0].object;
             selectObject(artObject);
-            draggedObject = artObject;
             orbitControls.enabled = false;
-            const wallNormal = new THREE.Vector3(0, 0, 1).applyQuaternion(draggedObject.quaternion);
+            const wallNormal = new THREE.Vector3(0, 0, 1).applyQuaternion(artObject.quaternion);
             dragPlane.setFromNormalAndCoplanarPoint(wallNormal, artIntersects[0].point);
             return;
         }
         
-        const roomIntersects = raycaster.intersectObjects(roomGroups.map(rg => rg.children.find(c => c.userData.isFloor)), true);
+        const roomIntersects = raycaster.intersectObjects(roomGroups, true);
         if (roomIntersects.length > 0) {
-            selectObject(roomIntersects[0].object.userData.room);
-            return;
+            const intersectedRoom = roomIntersects.find(i => i.object.userData.isFloor)?.object.userData.room;
+            if (intersectedRoom) {
+                selectObject(intersectedRoom);
+                return;
+            }
         }
 
         deselectObject();
 
     } else if (pointerLockControls.isLocked) {
         raycaster.setFromCamera({ x: 0, y: 0 }, camera);
-        const intersects = raycaster.intersectObjects(objects, true);
+        const intersects = raycaster.intersectObjects(scene.children, true);
         if (intersects.length === 0) return;
         
         const quizIntersect = intersects.find(i => i.object.userData.isQuizTrigger);
@@ -574,11 +564,11 @@ function onCanvasMouseDown(event) {
 }
 
 function onCanvasMouseMove(event) {
-    if (draggedObject && isEditMode) {
+    if (selectedObject && selectedObject.userData.isPainting && !orbitControls.enabled) {
         const mouse = new THREE.Vector2((event.clientX / window.innerWidth) * 2 - 1, -(event.clientY / window.innerHeight) * 2 + 1);
         raycaster.setFromCamera(mouse, camera);
         if (raycaster.ray.intersectPlane(dragPlane, dragIntersection)) {
-            draggedObject.position.copy(dragIntersection);
+            selectedObject.position.copy(dragIntersection);
             selectionBox.update();
         }
         return;
@@ -604,8 +594,9 @@ function onCanvasMouseMove(event) {
 }
 
 function onCanvasMouseUp() {
-    if (draggedObject) {
-        draggedObject = null; orbitControls.enabled = true; markAsDirty();
+    if (!orbitControls.enabled && selectedObject) {
+        orbitControls.enabled = true; 
+        markAsDirty();
     }
     if (isDrawing) {
         isDrawing = false;
@@ -643,6 +634,7 @@ export function updateRoomDimensions(room, width, depth, height, shouldSelect = 
         localPos: art.position.clone().sub(room.position)
     }));
     
+    // Clean up old room from collidables/objects arrays
     const oldCollidables = [];
     room.traverse(child => { if (child.userData.isWallContainer || child.userData.isWall || child.userData.isFloor) oldCollidables.push(child); });
     oldCollidables.forEach(c => { const index = collidables.indexOf(c); if(index > -1) collidables.splice(index,1); });
@@ -751,13 +743,18 @@ function updateRoomControls() {
 }
 
 function deleteRoom(roomToDelete) {
+    if (roomGroups.length <= 1) {
+        showMessage("No se puede eliminar la última sala.", "error");
+        return;
+    }
     deselectObject();
     const artworksToRemove = objects.filter(obj => (obj.userData.isPainting || obj.userData.isDrawingCanvas) && new THREE.Box3().setFromObject(roomToDelete).containsPoint(obj.position));
     artworksToRemove.forEach(obj => {
         if (obj.userData.isDrawingCanvas) {
-            const { canvasId, listener } = drawingCanvases[obj.userData.canvasId];
+            const { canvasId } = obj.userData;
+            const listener = drawingCanvases[canvasId]?.listener;
             if(listener) listener();
-            delete drawingCanvases[obj.userData.canvasId];
+            delete drawingCanvases[canvasId];
             remove(ref(db, `museums/${getCurrentMuseumId()}/drawings/${canvasId}`));
         } else {
              remove(ref(db, `images/${obj.userData.imageId}`));
@@ -766,15 +763,13 @@ function deleteRoom(roomToDelete) {
         obj.removeFromParent();
     });
 
-    // Remove openings from neighbors
-    // This logic needs to be precise
     const roomIndex = roomGroups.indexOf(roomToDelete); if (roomIndex > -1) roomGroups.splice(roomIndex, 1);
     roomToDelete.removeFromParent();
     updateRoomControls();
     markAsDirty();
 }
 
-function createQuizTrigger() {
+export function createQuizTrigger() {
     if (!font) return new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0x3b82f6 }));
     const geo = new TextGeometry('Q', { font, size: 1.5, height: 0.2, curveSegments: 12, bevelEnabled: true, bevelThickness: 0.1, bevelSize: 0.05, bevelOffset: 0, bevelSegments: 5 });
     geo.computeBoundingBox(); geo.translate(-0.5 * (geo.boundingBox.max.x - geo.boundingBox.min.x), 0, 0);
@@ -784,7 +779,7 @@ function createQuizTrigger() {
     return mesh;
 }
 
-export async function placePainting(url, intersect, restoreData) {
+export async function placePainting(url, restoreData) {
     return new Promise((resolve, reject) => {
         const textureLoader = new THREE.TextureLoader();
         textureLoader.load(url, (texture) => {
@@ -810,12 +805,14 @@ export async function placePainting(url, intersect, restoreData) {
                 initialHeight: height
             };
 
-            if (intersect) {
+            if (activePaintingIntersect) {
+                const intersect = activePaintingIntersect;
                 const worldNormal = new THREE.Vector3().copy(intersect.face.normal).transformDirection(intersect.object.matrixWorld);
                 paintingGroup.position.copy(intersect.point);
                 paintingGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), worldNormal);
                 paintingGroup.position.addScaledVector(worldNormal, frameThickness / 2 + 0.01);
                 markAsDirty();
+                activePaintingIntersect = null;
             } else if (restoreData) {
                 paintingGroup.position.copy(restoreData.position);
                 paintingGroup.quaternion.copy(restoreData.quaternion);
