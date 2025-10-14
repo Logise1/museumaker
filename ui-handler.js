@@ -1,7 +1,8 @@
 import { onValue, push, set, get, query, orderByChild, limitToFirst, serverTimestamp, ref } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
-import { getSelectedObject, updateRoomDimensions as updateRoomDimensions3D, markAsDirty, textureUrls, textureNames, setCurrentMusic, setCurrentDrawingColor, getDb, getMuseumId, clearScene as clearScene3D, objects, roomGroups, getRenderer, drawingCanvases, placePainting } from './three-scene.js';
+import { getSelectedObject, updateRoomDimensions as updateRoomDimensions3D, textureUrls, textureNames, setCurrentMusic, setCurrentDrawingColor, getDb, getMuseumId, clearScene as clearScene3D, objects, roomGroups, getRenderer, drawingCanvases, placePainting } from './three-scene.js';
 
 let callbacks = {};
+let markAsDirty; // Will be set in initUI
 const drawingColors = ['#000000', '#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6', '#ffffff'];
 
 
@@ -196,6 +197,12 @@ function renderTakeQuizQuestion(currentUser) {
 }
 
 async function answerQuiz(isCorrect, currentUser) {
+    // For simplicity, we assume any answer moves to the next question.
+    // A real implementation might show feedback.
+    if (!isCorrect) {
+        // Maybe show a "wrong answer" message
+    }
+
     currentQuestionIndex++;
     if (currentQuestionIndex >= currentQuizQuestions.length) {
         const completionTime = Date.now() - quizStartTime;
@@ -227,6 +234,7 @@ async function answerQuiz(isCorrect, currentUser) {
 export async function saveScoreToLeaderboard(roomId, time, userId, userEmail, userName = null) {
     const db = getDb();
     const museumId = getMuseumId();
+    if (!museumId || !roomId) return;
     const leaderboardRef = ref(db, `museums/${museumId}/leaderboards/${roomId}`);
     const newScoreRef = push(leaderboardRef);
     await set(newScoreRef, { time, userId, userEmail, userName, createdAt: serverTimestamp() });
@@ -236,6 +244,10 @@ async function showLeaderboard(roomId, yourTime = null) {
     showModal('leaderboard-modal');
     const db = getDb();
     const museumId = getMuseumId();
+    if (!museumId || !roomId) {
+        document.getElementById('leaderboard-list').innerHTML = '<p class="text-slate-500">Error: No se pudo cargar la clasificación.</p>';
+        return;
+    }
     const leaderboardRef = query(ref(db, `museums/${museumId}/leaderboards/${roomId}`), orderByChild('time'), limitToFirst(10));
     const snapshot = await get(leaderboardRef);
 
@@ -271,6 +283,7 @@ async function showLeaderboard(roomId, yourTime = null) {
 }
 
 export function updateSettingsUI(music) {
+    if (!music) return;
     const radioToCheck = document.querySelector(`.music-select-radio[value="${music}"]`);
     if (radioToCheck) radioToCheck.checked = true;
 }
@@ -278,6 +291,7 @@ export function updateSettingsUI(music) {
 // --- INITIALIZATION ---
 export function initUI(cb) {
     callbacks = cb;
+    markAsDirty = cb.markAsDirty; // Store the callback
     
     // --- AUTH ---
     document.getElementById('login-btn').addEventListener('click', () => {
@@ -337,11 +351,12 @@ export function initUI(cb) {
                 const db = getDb();
                 const newImageRef = push(ref(db, 'images'));
                 await set(newImageRef, e.target.result);
-                // The placePainting function is now directly imported
-                await placePainting(e.target.result, null, { imageId: newImageRef.key });
+                // The placePainting function is now directly imported and called
+                await callbacks.placePainting(e.target.result, { imageId: newImageRef.key });
                 hideModal('painting-modal');
                 document.getElementById('image-file').value = '';
             } catch (error) { 
+                console.error("Error placing painting:", error);
                 showMessage("Hubo un problema al guardar tu imagen.", 'error');
             } finally { 
                 addButton.disabled = false; 
@@ -377,6 +392,12 @@ export function initUI(cb) {
         const finalQuizData = editingQuizData.filter(q => q.question.trim() !== '' && q.options.every(opt => opt.trim() !== ''));
         room.userData.quiz = finalQuizData.length > 0 ? finalQuizData : null;
         
+        if (room.userData.quiz && !room.userData.quizTrigger) {
+            callbacks.createQuizTriggerForRoom(room);
+        } else if (!room.userData.quiz && room.userData.quizTrigger) {
+            callbacks.removeQuizTriggerFromRoom(room);
+        }
+
         markAsDirty();
         hideModal('quiz-modal');
     });
@@ -547,5 +568,4 @@ function updateMuteButtonUI() {
     const muteIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16"><path d="M6.717 3.55A.5.5 0 0 1 7 4v8a.5.5 0 0 1-.812.39L3.825 10.5H1.5A.5.5 0 0 1 1 10V6a.5.5 0 0 1 .5-.5h2.325l2.363-1.89a.5.5 0 0 1 .529-.06zM6 5.04 4.312 6.39A.5.5 0 0 1 4 6.5H2v3h2a.5.5 0 0 1 .312.11L6 10.96V5.04zm7.854.606a.5.5 0 0 1 0 .708L12.207 8l1.647 1.646a.5.5 0 0 1-.708.708L11.5 8.707l-1.646 1.647a.5.5 0 0 1-.708-.708L10.793 8 9.146 6.354a.5.5 0 1 1 .708-.708L11.5 7.293l1.646-1.647a.5.5 0 0 1 .708 0z"/></svg>`;
     btn.innerHTML = audio.muted ? playIcon : muteIcon;
 }
-
 
