@@ -3,6 +3,8 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { getDatabase, ref, set, onValue, push, remove, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
+// *** ELIMINADO: Se quita la importación de Firebase Storage. ***
+
 // Se importan funciones de los otros módulos de la aplicación.
 import { initUI, showView, renderDashboard, showModal, updateSaveButtonState } from './ui-handler.js';
 import { init3D, listenToMuseumData, saveMuseumToDB, switchToPreviewMode, setPlacingDrawingCanvas, clearScene, placePainting, createQuizTrigger, removeQuizTrigger } from './three-scene.js';
@@ -19,10 +21,11 @@ const firebaseConfig = {
     appId: "1:466260653400:web:b03257442d6f6fa16da12d",
 };
 
-// Inicialización de la app de Firebase y obtención de los servicios de autenticación y base de datos.
+// Inicialización de la app de Firebase y obtención de los servicios.
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
+// *** ELIMINADO: Se quita la inicialización de Storage. ***
 
 // --- ESTADO GLOBAL DE LA APLICACIÓN ---
 // Variables que mantienen el estado actual de la sesión y la aplicación.
@@ -166,6 +169,7 @@ function goBackToDashboard() {
 // --- CALLBACKS PARA LA UI ---
 // Objeto que agrupa todas las funciones que la UI puede necesitar invocar desde la lógica principal.
 const uiCallbacks = {
+    // *** ELIMINADO: Se quita la instancia de Storage. ***
     // Funciones de autenticación
     login: (email, password) => signInWithEmailAndPassword(auth, email, password),
     signup: (email, password) => createUserWithEmailAndPassword(auth, email, password),
