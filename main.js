@@ -1,7 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { getDatabase, ref, set, onValue, push, remove, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
-import { initUI, showView, renderDashboard, confirmMuseumDelete, showMessage } from './ui-handler.js';
+import { initUI, showView, renderDashboard, showModal, showMessage } from './ui-handler.js';
 import { init3D, listenToMuseumData, saveMuseumToDB, clearScene, getRenderer, isDataLoaded, setPlacingDrawingCanvas, switchToPreviewMode } from './three-scene.js';
 
 // --- FIREBASE CONFIG ---
@@ -71,7 +71,7 @@ function startEditor(museumId, museumName) {
     document.getElementById('editor-top-bar').classList.remove('hidden');
     showView('app');
     init3D(isViewerMode, markAsDirty, db, () => currentMuseumId, () => currentUser);
-    museumDataListener = listenToMuseumData(db, currentMuseumId, museumDataListener, isViewerMode, currentUser, goBackToDashboard);
+    museumDataListener = listenToMuseumData(db, currentMuseumId, isViewerMode, currentUser, goBackToDashboard);
 }
 
 function startViewer(museumId) {
@@ -80,7 +80,7 @@ function startViewer(museumId) {
     document.getElementById('editor-top-bar').classList.add('hidden');
     showView('app');
     init3D(isViewerMode, markAsDirty, db, () => currentMuseumId, () => currentUser);
-    museumDataListener = listenToMuseumData(db, currentMuseumId, museumDataListener, isViewerMode, currentUser, goBackToDashboard);
+    museumDataListener = listenToMuseumData(db, currentMuseumId, isViewerMode, currentUser, goBackToDashboard);
 }
 
 function goBackToDashboard() {
@@ -93,7 +93,6 @@ function goBackToDashboard() {
     showView('dashboard');
 }
 
-
 // --- Museum Data Handling ---
 async function createNewMuseum(museumName) {
     if (!museumName || !currentUser) return;
@@ -105,13 +104,14 @@ async function createNewMuseum(museumName) {
         position: { x: 0, y: 0, z: 0 },
         openings: [], width: 20, depth: 20, height: 10, artworks: []
     };
-    await set(newMuseumRef, {
+    const initialData = {
         owner: currentUser.uid,
         name: museumName,
         createdAt: serverTimestamp(),
         isPublic: false,
         data: { rooms: [initialRoom], settings: { floorTexture: 'marble', wallTexture: 'wood', ceilingTexture: 'marble', music: 'none' } }
-    });
+    };
+    await set(newMuseumRef, initialData);
     await set(ref(db, `users/${currentUser.uid}/museums/${museumId}`), { name: museumName });
 
     startEditor(museumId, museumName);
@@ -124,14 +124,15 @@ async function deleteMuseum(museumId) {
 }
 
 async function publishMuseum() {
-    if (!isDirty) {
-        await saveMuseumToDB(db, currentMuseumId, isViewerMode);
-    }
+    // Await the save operation before publishing
+    await new Promise(resolve => saveMuseumToDB(db, currentMuseumId, isViewerMode, resolve));
+    
     if (!currentMuseumId) return;
     await set(ref(db, `museums/${currentMuseumId}/isPublic`), true);
     const url = `${window.location.origin}${window.location.pathname}?view=${currentMuseumId}`;
     return url;
 }
+
 
 // --- Saving ---
 let saveTimeout;
@@ -140,6 +141,7 @@ let isDirty = false;
 
 function markAsDirty() {
     if (isViewerMode || !isDataLoaded()) return;
+    if (isDirty) return; // Don't queue multiple saves
     isDirty = true;
     requestSave();
 }
@@ -147,17 +149,20 @@ function markAsDirty() {
 function requestSave() {
     clearTimeout(saveTimeout);
     const now = Date.now();
-    if (now - lastSaveTime > 10000) { // Increased delay to avoid rapid saves
+    // Save immediately if it's been a while, otherwise debounce
+    if (now - lastSaveTime > 5000) {
         saveAndReset();
     } else {
-        saveTimeout = setTimeout(saveAndReset, 3000);
+        saveTimeout = setTimeout(saveAndReset, 2000);
     }
 }
 
-function saveAndReset(){
+function saveAndReset() {
+    if (!isDirty) return;
     saveMuseumToDB(db, currentMuseumId, isViewerMode, () => {
         isDirty = false;
         lastSaveTime = Date.now();
+        console.log("Save complete.");
     });
 }
 
@@ -177,7 +182,8 @@ initUI({
         setPlacingDrawingCanvas(true);
         showMessage("Entra en 'Visitar Museo' y haz clic en una pared para colocar la pizarra.");
         switchToPreviewMode();
-    }
+    },
+    switchToPreview: () => switchToPreviewMode()
 });
 
 checkViewerMode();
