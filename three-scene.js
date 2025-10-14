@@ -5,7 +5,7 @@ import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { FontLoader } from 'three/addons/loaders/FontLoader.js';
 import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
 import { ref, set, onValue, push, get, remove } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
-import { showModal, hideModal, updateInfoPanel, deselectObject as deselectObjectUI, showMessage, openQuizEditor, hideFocusView, showFocusView, updateSettingsUI, startQuiz } from './ui-handler.js';
+import { showModal, hideModal, updateInfoPanel, deselectObject as deselectObjectUI, showMessage, openQuizEditor, hideFocusView, showFocusView, updateSettingsUI, startQuiz, updateSaveButtonState } from './ui-handler.js';
 
 // --- MODULE STATE ---
 let scene, camera, renderer, orbitControls, pointerLockControls;
@@ -244,8 +244,12 @@ async function loadMuseumState(state) {
     }
     await Promise.all(promises.filter(p => p));
 
-    if (isViewerMode) switchToPreviewMode(true);
-    else switchToEditMode();
+    if (isViewerMode) {
+        switchToPreviewMode(true);
+    } else {
+        switchToEditMode();
+    }
+    updateSaveButtonState('default');
 }
 
 async function getImageDataUrl(imageId) {
