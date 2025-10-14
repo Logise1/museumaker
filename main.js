@@ -1,7 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { getDatabase, ref, set, onValue, push, remove, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
-import { initUI, showView, renderDashboard, showModal, hideModal } from './ui-handler.js';
+import { initUI, showView, renderDashboard, showModal, updateSaveButtonState } from './ui-handler.js';
 import { init3D, listenToMuseumData, saveMuseumToDB, switchToPreviewMode, setPlacingDrawingCanvas, clearScene, placePainting, createQuizTrigger, removeQuizTrigger } from './three-scene.js';
 
 // --- FIREBASE CONFIG ---
@@ -22,44 +22,34 @@ const db = getDatabase(app);
 // --- GLOBAL STATE ---
 let currentUser = null;
 let currentMuseumId = null;
-let currentMuseumName = "";
 let isViewerMode = false;
 let museumDataListenerUnsubscribe = null;
 let isDataLoaded = false;
-let saveTimeout;
-let lastSaveTime = 0;
 let isDirty = false;
-let museumToDelete = { id: null, name: null };
 
 // --- CORE LOGIC ---
-
 function markAsDirty() {
     if (isViewerMode || !isDataLoaded) return;
-    isDirty = true;
-    requestSave();
-}
-
-function requestSave() {
-    clearTimeout(saveTimeout);
-    const now = Date.now();
-    // Save immediately if it's been a while, otherwise debounce
-    if (now - lastSaveTime > 10000) { 
-        saveCurrentMuseum();
-    } else {
-        saveTimeout = setTimeout(saveCurrentMuseum, 3000);
+    if (!isDirty) {
+        isDirty = true;
+        updateSaveButtonState('dirty');
     }
 }
 
 function saveCurrentMuseum(onComplete) {
-    if (!isDirty || isViewerMode || !currentMuseumId) {
+    if (isViewerMode || !currentMuseumId) {
         if (onComplete) onComplete();
         return;
     }
-    isDirty = false;
-    lastSaveTime = Date.now();
-    saveMuseumToDB(db, currentMuseumId, isViewerMode, onComplete);
-}
 
+    updateSaveButtonState('saving');
+
+    saveMuseumToDB(db, currentMuseumId, isViewerMode, () => {
+        isDirty = false;
+        updateSaveButtonState('saved');
+        if (onComplete) onComplete();
+    });
+}
 
 // --- AUTHENTICATION ---
 onAuthStateChanged(auth, (user) => {
@@ -82,15 +72,13 @@ onAuthStateChanged(auth, (user) => {
 });
 
 function confirmMuseumDelete(id, name) {
-    museumToDelete = { id, name };
     const modal = document.getElementById('delete-confirm-modal');
     document.getElementById('deleting-museum-name').textContent = name;
-    modal.dataset.museumId = id; // Store for the handler
+    modal.dataset.museumId = id;
     showModal('delete-confirm-modal');
 }
 
 // --- APPLICATION FLOW ---
-
 function checkViewerMode() {
     const urlParams = new URLSearchParams(window.location.search);
     const viewId = urlParams.get('view');
@@ -102,7 +90,6 @@ function checkViewerMode() {
 
 function startEditor(museumId, museumName) {
     currentMuseumId = museumId;
-    currentMuseumName = museumName;
     isViewerMode = false;
     document.getElementById('museum-name-display').textContent = museumName;
     document.getElementById('editor-top-bar').classList.remove('hidden');
@@ -126,6 +113,7 @@ function goBackToDashboard() {
     if (museumDataListenerUnsubscribe) museumDataListenerUnsubscribe();
     currentMuseumId = null;
     isDataLoaded = false;
+    isDirty = false;
     clearScene();
     showView('dashboard');
 }
@@ -174,6 +162,7 @@ const uiCallbacks = {
             });
         });
     },
+    saveChanges: saveCurrentMuseum,
     addDrawing: () => {
         setPlacingDrawingCanvas(true);
         switchToPreviewMode();
