@@ -2,7 +2,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebas
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { getDatabase, ref, set, onValue, push, remove, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
 import { initUI, showView, renderDashboard, showModal, hideModal } from './ui-handler.js';
-import { init3D, listenToMuseumData, saveMuseumToDB, switchToPreviewMode, setPlacingDrawingCanvas, clearScene } from './three-scene.js';
+import { init3D, listenToMuseumData, saveMuseumToDB, switchToPreviewMode, setPlacingDrawingCanvas, clearScene, placePainting, createQuizTrigger, removeQuizTrigger } from './three-scene.js';
 
 // --- FIREBASE CONFIG ---
 const firebaseConfig = {
@@ -180,6 +180,19 @@ const uiCallbacks = {
     },
     switchToPreview: () => switchToPreviewMode(),
     markAsDirty: markAsDirty,
+    placePainting: (url, data) => placePainting(url, data),
+    createQuizTriggerForRoom: (room) => {
+        const trigger = createQuizTrigger();
+        trigger.position.y = -room.userData.height / 2 + 2;
+        room.add(trigger);
+        room.userData.quizTrigger = trigger;
+    },
+    removeQuizTriggerFromRoom: (room) => {
+        if (room.userData.quizTrigger) {
+            room.userData.quizTrigger.removeFromParent();
+            room.userData.quizTrigger = null;
+        }
+    }
 };
 
 // --- INITIALIZATION ---
