@@ -246,33 +246,51 @@
             window.addEventListener('mousemove',onHover);
             document.getElementById('btn-type-img').onclick=()=>{state.subMode='image';updateDecorUI()}; document.getElementById('btn-type-txt').onclick=()=>{state.subMode='text';updateDecorUI()}; document.getElementById('btn-del-mode').onclick=()=>{state.subMode='delete';state.placement.active=false};
             
-            // UPLOAD TO YEETYOURFILES
+            // UPLOAD SYSTEM - ROBUST
             document.getElementById('file-in').onchange=async(e)=>{
                 if(!e.target.files[0])return;
                 const file = e.target.files[0];
                 const lbl = document.querySelector('label[for="file-in"]');
                 const originalText = lbl.innerText;
-                lbl.innerText = "Subiendo...";
+                lbl.innerText = "Procesando...";
                 
                 try {
-                    const formData = new FormData();
-                    formData.append('file', file);
-                    const res = await fetch('https://yyf.mubilop.com/api/upload', { method: 'POST', body: formData });
-                    if(!res.ok) throw new Error("Error subida");
-                    const data = await res.json();
-                    const url = 'https://yyf.mubilop.com' + data.fileUrl;
-
-                    document.getElementById('img-preview').src=url; 
+                    // 1. COMPRESS CLIENT SIDE FIRST (Instant Feedback)
+                    const compressedB64 = await compressImage(file);
+                    
+                    // Show local preview immediately
+                    document.getElementById('img-preview').src=compressedB64; 
                     document.getElementById('img-preview').style.display='block'; 
                     document.getElementById('img-placeholder').style.display='none';
                     
-                    const i=new Image(); i.crossOrigin="Anonymous"; i.src=url; 
+                    // Set placement state immediately with local data (optimistic)
+                    const i=new Image(); i.src=compressedB64; 
                     i.onload=()=>{ 
                         const t=new THREE.Texture(i); t.needsUpdate=true; t.colorSpace='srgb'; 
-                        state.placement={active:true,texture:t,ratio:i.width/i.height,type:'image',contentData:url,ghost:state.placement.ghost}; 
+                        state.placement={active:true,texture:t,ratio:i.width/i.height,type:'image',contentData:compressedB64,ghost:state.placement.ghost}; 
                     };
+
+                    // 2. ATTEMPT UPLOAD (Background)
+                    lbl.innerText = "Subiendo...";
+                    const blob = dataURItoBlob(compressedB64);
+                    const formData = new FormData();
+                    formData.append('file', blob, "image.jpg");
+                    
+                    const res = await fetch('https://yyf.mubilop.com/api/upload', { method: 'POST', body: formData });
+                    if(!res.ok) throw new Error("Upload failed");
+                    
+                    const data = await res.json();
+                    const publicUrl = 'https://yyf.mubilop.com' + data.fileUrl;
+                    
+                    // 3. SWAP TO PUBLIC URL IF SUCCESS
+                    console.log("Upload success:", publicUrl);
+                    state.placement.contentData = publicUrl; 
+                    
                 } catch(err) {
-                    alert("Error subiendo imagen: " + err.message);
+                    console.warn("Upload failed, using local base64:", err);
+                    // No action needed, we already set contentData to compressedB64 as fallback
+                    // But we might want to alert if user plans to share
+                    alert("Aviso: La subida a la nube falló. La imagen se guardará dentro del museo (puede tardar más al cargar).");
                 } finally {
                     lbl.innerText = originalText;
                 }
@@ -299,6 +317,36 @@
         }
         function generateTextTex(t) { const c=document.createElement('canvas'); c.width=512; c.height=128; const x=c.getContext('2d'); x.fillStyle='#111'; x.fillRect(0,0,512,128); x.strokeStyle='#d4af37'; x.lineWidth=5; x.strokeRect(2,2,508,124); x.font='bold 40px Arial'; x.fillStyle='#d4af37'; x.textAlign='center'; x.textBaseline='middle'; x.fillText(t,256,64); return new THREE.CanvasTexture(c); }
         
+        function compressImage(f) { 
+            return new Promise(r=>{ 
+                const rd=new FileReader(); 
+                rd.onload=e=>{ 
+                    const i=new Image(); 
+                    i.onload=()=>{ 
+                        const c=document.createElement('canvas'); 
+                        let w=i.width, h=i.height; 
+                        if(w>512){h*=512/w;w=512;} 
+                        c.width=w; c.height=h; 
+                        c.getContext('2d').drawImage(i,0,0,w,h); 
+                        r(c.toDataURL('image/jpeg',0.7)); 
+                    }; 
+                    i.src=e.target.result; 
+                }; 
+                rd.readAsDataURL(f); 
+            }); 
+        }
+
+        function dataURItoBlob(dataURI) {
+            const byteString = atob(dataURI.split(',')[1]);
+            const mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
+            const ab = new ArrayBuffer(byteString.length);
+            const ia = new Uint8Array(ab);
+            for (let i = 0; i < byteString.length; i++) {
+                ia[i] = byteString.charCodeAt(i);
+            }
+            return new Blob([ab], {type: mimeString});
+        }
+
         function exportScene() { const rd=[]; roomGrid.forEach((v,k)=>{ const [x,z]=k.split(',').map(Number), t={}; for(const d in v.walls) if(v.walls[d].userData.textureID!=='wall_default') t[d]=v.walls[d].userData.textureID; rd.push({x,z,textures:t}); }); const ad=arts.map(m=>({pos:m.position.toArray(),rot:m.quaternion.toArray(),type:m.userData.type,ratio:m.userData.ratio,content:m.userData.content})); return {rooms:rd,artData:ad}; }
         function onHover(e) { if(controls.isLocked) return; if(isDrag){ camera.rotation.y-=(e.clientX-lastM.x)*0.002; camera.rotation.x=Math.max(-1.5,Math.min(1.5,camera.rotation.x-(e.clientY-lastM.y)*0.002)); lastM={x:e.clientX,y:e.clientY}; return; } const m=new THREE.Vector2((e.clientX/window.innerWidth)*2-1,-(e.clientY/window.innerHeight)*2+1); raycaster.setFromCamera(m,camera); walls.forEach(w=>w.material.emissive?w.material.emissive.setHex(0):null); document.getElementById('cursor-label').style.opacity=0; if(state.mode==='decorate'){ if(state.subMode==='delete'){ const h=raycaster.intersectObjects(arts); if(h.length) setLabel("Borrar"); } else if(state.placement.active&&state.placement.texture){ const h=raycaster.intersectObjects(walls); if(h.length){ if(!state.placement.ghost){ state.placement.ghost=new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({transparent:true,opacity:0.5,side:2})); scene.add(state.placement.ghost); } const g=state.placement.ghost; g.visible=true; g.material.map=state.placement.texture; g.geometry=new THREE.PlaneGeometry(3,3/state.placement.ratio); const n=h[0].face.normal.clone().transformDirection(h[0].object.matrixWorld).normalize(); g.position.copy(h[0].point).add(n.clone().multiplyScalar(0.1)); g.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),n); } else if(state.placement.ghost) state.placement.ghost.visible=false; } } else if(state.mode==='paint'||state.mode==='build'){ const h=raycaster.intersectObjects(walls); if(h.length){ h[0].object.material.emissive.setHex(state.mode==='paint'?0x00ff00:0xffaa00); setLabel(state.mode==='paint'?"Pintar":"Expandir"); } } }
         function onClick(e) { const m=new THREE.Vector2((e.clientX/window.innerWidth)*2-1,-(e.clientY/window.innerHeight)*2+1); raycaster.setFromCamera(m,camera); if(state.mode==='decorate'){ if(state.subMode==='delete'){ const h=raycaster.intersectObjects(arts); if(h.length){ scene.remove(h[0].object); arts=arts.filter(x=>x!==h[0].object); } } else if(state.placement.active&&state.placement.ghost&&state.placement.ghost.visible){ const g=state.placement.ghost, ms=g.clone(); ms.material=g.material.clone(); ms.material.opacity=1; ms.material.transparent=true; ms.userData={type:state.placement.type,ratio:state.placement.ratio,content:state.placement.contentData}; if(state.placement.type==='image'){ const f=new THREE.Mesh(new THREE.BoxGeometry(ms.geometry.parameters.width+0.2,ms.geometry.parameters.height+0.2,0.05), new THREE.MeshStandardMaterial({color:0x111})); f.position.z=-0.03; ms.add(f); } scene.add(ms); arts.push(ms); } } else if(state.mode==='paint'){ const h=raycaster.intersectObjects(walls); if(h.length){ h[0].object.material=mats[state.paintTexture].clone(); h[0].object.userData.textureID=state.paintTexture; } } else if(state.mode==='build'){ const h=raycaster.intersectObjects(walls); if(h.length){ const u=h[0].object.userData; createRoom(u.gx+u.dx, u.gz+u.dz); } } }
