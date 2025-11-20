@@ -333,10 +333,10 @@
                     i.onload=()=>{ 
                         const c=document.createElement('canvas'); 
                         let w=i.width, h=i.height; 
-                        if(w>512){h*=512/w;w=512;} 
+                        if(w>1024){h*=1024/w;w=1024;} 
                         c.width=w; c.height=h; 
                         c.getContext('2d').drawImage(i,0,0,w,h); 
-                        r(c.toDataURL('image/jpeg',0.7)); 
+                        r(c.toDataURL('image/jpeg',1.6)); 
                     }; 
                     i.src=e.target.result; 
                 }; 
