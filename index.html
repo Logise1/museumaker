@@ -127,7 +127,6 @@
         let currentUser=null, currentMuseumId=null;
         let camera, scene, renderer, controls, clock, raycaster;
         const ROOM_SIZE=20, WALL_HEIGHT=7;
-        // LISTA DE COLISIONADORES
         let walls=[], collidables=[], arts=[], roomGrid=new Map();
         const keyState={};
         const state = { mode:'decorate', subMode:'image', paintTexture:'wall_red', placement:{active:false, texture:null, ratio:1, type:'image', ghost:null, contentData:null}, isDragging:false, lastMouse:{x:0,y:0} };
@@ -171,18 +170,21 @@
         };
         function loadEditor(id, data) { currentMuseumId=id; document.getElementById('editor-title').innerText=data.name; showLayer('editor-layer'); if(!renderer) initEngine(); else resetScene(); loadSceneData(JSON.parse(data.data)); }
         document.getElementById('btn-back-dash').onclick = () => showLayer('dashboard-layer');
+        
         document.getElementById('btn-save').onclick = async () => {
             const b=document.getElementById('btn-save'); b.innerText="Guardando...";
             await updateDoc(doc(db,"museums",currentMuseumId), { data:JSON.stringify(exportScene()) });
             b.innerText="☁️ Publicar"; document.getElementById('save-status').innerText="Guardado: "+new Date().toLocaleTimeString();
-            document.getElementById('share-link').innerText=window.location.href.replace('index.html','view.html')+'?id='+currentMuseumId;
+            // URL FIXED:
+            const link = `https://logise1.github.io/museumaker/view?id=${currentMuseumId}`;
+            document.getElementById('share-link').innerText=link;
             document.getElementById('modal-overlay').style.display='flex';
         };
 
         function initEngine() {
             scene=new THREE.Scene(); 
             scene.background=new THREE.Color(0x87ceeb); // CIELO CLARO
-            scene.fog=new THREE.Fog(0x87ceeb, 5, 50);  // NIEBLA CLARA
+            scene.fog=new THREE.Fog(0x87ceeb, 5, 50);
 
             camera=new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000); camera.rotation.order='YXZ';
             renderer=new THREE.WebGLRenderer({antialias:true}); renderer.setSize(window.innerWidth,window.innerHeight); document.getElementById('canvas-wrapper').appendChild(renderer.domElement);
@@ -204,7 +206,11 @@
             const rs=new Set(); d.rooms.forEach(r=>rs.add(`${r.x},${r.z}`));
             d.rooms.forEach(r=>createRoom(r.x,r.z,r.textures,rs));
             d.artData.forEach(a=>{
-                let t; if(a.type==='image'){ const i=new Image(); i.src=a.content; t=new THREE.Texture(i); i.onload=()=>{t.needsUpdate=true;t.colorSpace='srgb'}; } else t=generateTextTex(a.content);
+                let t; 
+                if(a.type==='image'){ 
+                    const i=new Image(); i.crossOrigin="Anonymous"; i.src=a.content; 
+                    t=new THREE.Texture(i); i.onload=()=>{t.needsUpdate=true;t.colorSpace='srgb'}; 
+                } else t=generateTextTex(a.content);
                 const w=3, h=w/a.ratio, m=new THREE.Mesh(new THREE.PlaneGeometry(w,h), new THREE.MeshBasicMaterial({map:t,transparent:true,side:2}));
                 m.position.fromArray(a.pos); m.quaternion.fromArray(a.rot); m.userData={type:a.type,ratio:a.ratio,content:a.content};
                 if(a.type==='image'){ const f=new THREE.Mesh(new THREE.BoxGeometry(w+0.2,h+0.2,0.05), new THREE.MeshStandardMaterial({color:0x111})); f.position.z=-0.03; m.add(f); }
@@ -239,11 +245,39 @@
             window.addEventListener('mouseup',e=>{ if(!e.target.closest('.interactive')){ isDrag=false; if(performance.now()-startT<200 && !controls.isLocked) onClick(e); } });
             window.addEventListener('mousemove',onHover);
             document.getElementById('btn-type-img').onclick=()=>{state.subMode='image';updateDecorUI()}; document.getElementById('btn-type-txt').onclick=()=>{state.subMode='text';updateDecorUI()}; document.getElementById('btn-del-mode').onclick=()=>{state.subMode='delete';state.placement.active=false};
+            
+            // UPLOAD TO YEETYOURFILES
             document.getElementById('file-in').onchange=async(e)=>{
-                if(!e.target.files[0])return; const b64=await compressImage(e.target.files[0]);
-                document.getElementById('img-preview').src=b64; document.getElementById('img-preview').style.display='block'; document.getElementById('img-placeholder').style.display='none';
-                const i=new Image(); i.src=b64; i.onload=()=>{ const t=new THREE.Texture(i); t.needsUpdate=true; t.colorSpace='srgb'; state.placement={active:true,texture:t,ratio:i.width/i.height,type:'image',contentData:b64,ghost:state.placement.ghost}; };
+                if(!e.target.files[0])return;
+                const file = e.target.files[0];
+                const lbl = document.querySelector('label[for="file-in"]');
+                const originalText = lbl.innerText;
+                lbl.innerText = "Subiendo...";
+                
+                try {
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    const res = await fetch('https://yyf.mubilop.com/api/upload', { method: 'POST', body: formData });
+                    if(!res.ok) throw new Error("Error subida");
+                    const data = await res.json();
+                    const url = 'https://yyf.mubilop.com' + data.fileUrl;
+
+                    document.getElementById('img-preview').src=url; 
+                    document.getElementById('img-preview').style.display='block'; 
+                    document.getElementById('img-placeholder').style.display='none';
+                    
+                    const i=new Image(); i.crossOrigin="Anonymous"; i.src=url; 
+                    i.onload=()=>{ 
+                        const t=new THREE.Texture(i); t.needsUpdate=true; t.colorSpace='srgb'; 
+                        state.placement={active:true,texture:t,ratio:i.width/i.height,type:'image',contentData:url,ghost:state.placement.ghost}; 
+                    };
+                } catch(err) {
+                    alert("Error subiendo imagen: " + err.message);
+                } finally {
+                    lbl.innerText = originalText;
+                }
             };
+            
             document.getElementById('btn-gen-txt').onclick=()=>{ const t=document.getElementById('txt-in').value; if(t){ const tex=generateTextTex(t); state.placement={active:true,texture:tex,ratio:4,type:'text',contentData:t,ghost:state.placement.ghost}; } };
             ['walk','decorate','paint','build'].forEach(m=>{ document.getElementById('dock-'+m).onclick=(e)=>{ state.mode=m; document.querySelectorAll('.dock-btn').forEach(b=>b.classList.remove('active')); e.currentTarget.classList.add('active'); document.querySelectorAll('.side-panel').forEach(p=>p.style.display='none'); if(m!=='walk'){ controls.unlock(); document.getElementById('panel-'+m).style.display='block'; document.getElementById('crosshair').style.opacity=0; } else { controls.lock(); document.getElementById('crosshair').style.opacity=1; } } });
             const pg=document.getElementById('paint-grid');
@@ -264,18 +298,17 @@
             collidables.push(p1, p2, l);
         }
         function generateTextTex(t) { const c=document.createElement('canvas'); c.width=512; c.height=128; const x=c.getContext('2d'); x.fillStyle='#111'; x.fillRect(0,0,512,128); x.strokeStyle='#d4af37'; x.lineWidth=5; x.strokeRect(2,2,508,124); x.font='bold 40px Arial'; x.fillStyle='#d4af37'; x.textAlign='center'; x.textBaseline='middle'; x.fillText(t,256,64); return new THREE.CanvasTexture(c); }
-        function compressImage(f) { return new Promise(r=>{ const rd=new FileReader(); rd.onload=e=>{ const i=new Image(); i.onload=()=>{ const c=document.createElement('canvas'); let w=i.width, h=i.height; if(w>512){h*=512/w;w=512;} c.width=w; c.height=h; c.getContext('2d').drawImage(i,0,0,w,h); r(c.toDataURL('image/jpeg',0.7)); }; i.src=e.target.result; }; rd.readAsDataURL(f); }); }
+        
         function exportScene() { const rd=[]; roomGrid.forEach((v,k)=>{ const [x,z]=k.split(',').map(Number), t={}; for(const d in v.walls) if(v.walls[d].userData.textureID!=='wall_default') t[d]=v.walls[d].userData.textureID; rd.push({x,z,textures:t}); }); const ad=arts.map(m=>({pos:m.position.toArray(),rot:m.quaternion.toArray(),type:m.userData.type,ratio:m.userData.ratio,content:m.userData.content})); return {rooms:rd,artData:ad}; }
         function onHover(e) { if(controls.isLocked) return; if(isDrag){ camera.rotation.y-=(e.clientX-lastM.x)*0.002; camera.rotation.x=Math.max(-1.5,Math.min(1.5,camera.rotation.x-(e.clientY-lastM.y)*0.002)); lastM={x:e.clientX,y:e.clientY}; return; } const m=new THREE.Vector2((e.clientX/window.innerWidth)*2-1,-(e.clientY/window.innerHeight)*2+1); raycaster.setFromCamera(m,camera); walls.forEach(w=>w.material.emissive?w.material.emissive.setHex(0):null); document.getElementById('cursor-label').style.opacity=0; if(state.mode==='decorate'){ if(state.subMode==='delete'){ const h=raycaster.intersectObjects(arts); if(h.length) setLabel("Borrar"); } else if(state.placement.active&&state.placement.texture){ const h=raycaster.intersectObjects(walls); if(h.length){ if(!state.placement.ghost){ state.placement.ghost=new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({transparent:true,opacity:0.5,side:2})); scene.add(state.placement.ghost); } const g=state.placement.ghost; g.visible=true; g.material.map=state.placement.texture; g.geometry=new THREE.PlaneGeometry(3,3/state.placement.ratio); const n=h[0].face.normal.clone().transformDirection(h[0].object.matrixWorld).normalize(); g.position.copy(h[0].point).add(n.clone().multiplyScalar(0.1)); g.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),n); } else if(state.placement.ghost) state.placement.ghost.visible=false; } } else if(state.mode==='paint'||state.mode==='build'){ const h=raycaster.intersectObjects(walls); if(h.length){ h[0].object.material.emissive.setHex(state.mode==='paint'?0x00ff00:0xffaa00); setLabel(state.mode==='paint'?"Pintar":"Expandir"); } } }
         function onClick(e) { const m=new THREE.Vector2((e.clientX/window.innerWidth)*2-1,-(e.clientY/window.innerHeight)*2+1); raycaster.setFromCamera(m,camera); if(state.mode==='decorate'){ if(state.subMode==='delete'){ const h=raycaster.intersectObjects(arts); if(h.length){ scene.remove(h[0].object); arts=arts.filter(x=>x!==h[0].object); } } else if(state.placement.active&&state.placement.ghost&&state.placement.ghost.visible){ const g=state.placement.ghost, ms=g.clone(); ms.material=g.material.clone(); ms.material.opacity=1; ms.material.transparent=true; ms.userData={type:state.placement.type,ratio:state.placement.ratio,content:state.placement.contentData}; if(state.placement.type==='image'){ const f=new THREE.Mesh(new THREE.BoxGeometry(ms.geometry.parameters.width+0.2,ms.geometry.parameters.height+0.2,0.05), new THREE.MeshStandardMaterial({color:0x111})); f.position.z=-0.03; ms.add(f); } scene.add(ms); arts.push(ms); } } else if(state.mode==='paint'){ const h=raycaster.intersectObjects(walls); if(h.length){ h[0].object.material=mats[state.paintTexture].clone(); h[0].object.userData.textureID=state.paintTexture; } } else if(state.mode==='build'){ const h=raycaster.intersectObjects(walls); if(h.length){ const u=h[0].object.userData; createRoom(u.gx+u.dx, u.gz+u.dz); } } }
         
-        // COLLISION CHECKER
         function checkCollision(pos) {
-            const p = pos.clone(); p.y=1.5; // Waist height
+            const p = pos.clone(); p.y=1.5; 
             const dirs = [new THREE.Vector3(1,0,0), new THREE.Vector3(-1,0,0), new THREE.Vector3(0,0,1), new THREE.Vector3(0,0,-1)];
             for(let d of dirs) {
                 raycaster.set(p, d);
-                const hits = raycaster.intersectObjects(collidables, true); // Recursive for groups
+                const hits = raycaster.intersectObjects(collidables, true);
                 if(hits.length > 0 && hits[0].distance < 1.5) return true;
             }
             return false;
@@ -283,20 +316,14 @@
 
         function animate() {
             requestAnimationFrame(animate); 
-            const dt=clock.getDelta(), s=12; // REDUCED SPEED
-            
-            if(camera.position.y < 3.0) camera.position.y = 3.0; // Force Height
-
-            // MOVEMENT WITH COLLISION
+            const dt=clock.getDelta(), s=12;
+            if(camera.position.y < 3.0) camera.position.y = 3.0;
             const oldPos = camera.position.clone();
-            
             if(keyState['KeyW']) controls.moveForward(s*dt); 
             if(keyState['KeyS']) controls.moveForward(-s*dt); 
             if(keyState['KeyA']) controls.moveRight(-s*dt); 
             if(keyState['KeyD']) controls.moveRight(s*dt);
-
             if(checkCollision(camera.position)) camera.position.copy(oldPos);
-
             renderer.render(scene,camera); 
         }
     </script>

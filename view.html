@@ -95,7 +95,7 @@
 
             data.artData.forEach(a => {
                 let tex;
-                if(a.type === 'image') { const img = new Image(); img.src = a.content; tex = new THREE.Texture(img); img.onload = () => { tex.needsUpdate=true; tex.colorSpace='srgb'; }; }
+                if(a.type === 'image') { const img = new Image(); img.crossOrigin="Anonymous"; img.src = a.content; tex = new THREE.Texture(img); img.onload = () => { tex.needsUpdate=true; tex.colorSpace='srgb'; }; }
                 else {
                     const c = document.createElement('canvas'); c.width=512; c.height=128; const x = c.getContext('2d');
                     x.fillStyle='#111'; x.fillRect(0,0,512,128); x.strokeStyle='#d4af37'; x.lineWidth=5; x.strokeRect(2,2,508,124);
@@ -141,13 +141,19 @@
         }
 
         function animate() {
-            requestAnimationFrame(animate); const dt = clock.getDelta(); const speed = 12; // VELOCIDAD REDUCIDA
-            if(camera.position.y < 3.0) camera.position.y = 3.0;
-
-            const oldPos = camera.position.clone();
-            if(keyState['KeyW']) controls.moveForward(speed*dt); if(keyState['KeyS']) controls.moveForward(-speed*dt);
-            if(keyState['KeyA']) controls.moveRight(-speed*dt); if(keyState['KeyD']) controls.moveRight(speed*dt);
+            requestAnimationFrame(animate); 
+            const dt=clock.getDelta(), s=12; // VELOCIDAD REDUCIDA
             
+            if(camera.position.y < 3.0) camera.position.y = 3.0; // Force Height
+
+            // MOVEMENT WITH COLLISION
+            const oldPos = camera.position.clone();
+            
+            if(keyState['KeyW']) controls.moveForward(s*dt); 
+            if(keyState['KeyS']) controls.moveForward(-s*dt); 
+            if(keyState['KeyA']) controls.moveRight(-s*dt); 
+            if(keyState['KeyD']) controls.moveRight(s*dt);
+
             if(checkCollision(camera.position)) camera.position.copy(oldPos);
 
             renderer.render(scene, camera);
