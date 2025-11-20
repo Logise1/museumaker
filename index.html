@@ -94,7 +94,14 @@
         <div id="panel-decorate" class="glass-panel side-panel interactive">
             <h3>Decoración</h3>
             <p style="font-size:0.85rem; color:#aaa; margin-bottom:15px;">Sube tus imágenes o crea placas de texto. Luego, haz clic en cualquier pared para colgar tu obra.</p>
-            <div style="display:flex; gap:10px; margin-bottom:20px;"><button id="btn-type-img" class="secondary">Imagen</button><button id="btn-type-txt" class="secondary">Texto</button></div><div id="opts-img"><div class="preview-box"><span id="img-placeholder" style="color:#444; font-size:0.8rem;">Vista Previa</span><img id="img-preview" style="display:none"></div><label class="secondary" style="display:block; padding:10px; text-align:center; border-radius:8px; cursor:pointer; background:rgba(255,255,255,0.1);">📂 Subir<input type="file" id="file-in" accept="image/*" style="display:none"></label></div><div id="opts-txt" style="display:none;"><input type="text" id="txt-in" placeholder="Texto..."><button id="btn-gen-txt">Generar</button></div><div style="margin-top:20px; padding-top:15px; border-top:1px solid var(--glass-border);"><button id="btn-del-mode" class="danger">🗑️ Borrar Objeto</button></div>
+            <div style="display:flex; gap:10px; margin-bottom:20px;"><button id="btn-type-img" class="secondary">Imagen</button><button id="btn-type-txt" class="secondary">Texto</button></div>
+            <div id="opts-img">
+                <div class="preview-box"><span id="img-placeholder" style="color:#444; font-size:0.8rem;">Vista Previa</span><img id="img-preview" style="display:none"></div>
+                <!-- AQUI ESTA LA CORRECCION: AÑADIDO for="file-in" -->
+                <label for="file-in" class="secondary" style="display:block; padding:10px; text-align:center; border-radius:8px; cursor:pointer; background:rgba(255,255,255,0.1);">📂 Subir</label>
+                <input type="file" id="file-in" accept="image/*" style="display:none">
+            </div>
+            <div id="opts-txt" style="display:none;"><input type="text" id="txt-in" placeholder="Texto..."><button id="btn-gen-txt">Generar</button></div><div style="margin-top:20px; padding-top:15px; border-top:1px solid var(--glass-border);"><button id="btn-del-mode" class="danger">🗑️ Borrar Objeto</button></div>
         </div>
         
         <div id="panel-paint" class="glass-panel side-panel interactive"><h3>Materiales</h3><p style="font-size:0.85rem; color:#aaa;">Selecciona un acabado y haz clic en una pared o suelo para cambiar su apariencia instantáneamente.</p><div class="color-grid" id="paint-grid"></div></div>
@@ -250,7 +257,10 @@
             document.getElementById('file-in').onchange=async(e)=>{
                 if(!e.target.files[0])return;
                 const file = e.target.files[0];
+                // FIX: Selector corregido y asegurado
                 const lbl = document.querySelector('label[for="file-in"]');
+                if(!lbl) { console.error("Label not found"); return; }
+                
                 const originalText = lbl.innerText;
                 lbl.innerText = "Procesando...";
                 
@@ -288,8 +298,6 @@
                     
                 } catch(err) {
                     console.warn("Upload failed, using local base64:", err);
-                    // No action needed, we already set contentData to compressedB64 as fallback
-                    // But we might want to alert if user plans to share
                     alert("Aviso: La subida a la nube falló. La imagen se guardará dentro del museo (puede tardar más al cargar).");
                 } finally {
                     lbl.innerText = originalText;
