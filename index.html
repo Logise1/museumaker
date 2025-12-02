@@ -68,7 +68,7 @@
         .preview-box { width: 100%; height: 140px; background: #000; border-radius: 8px; margin-bottom: 15px; border: 1px dashed #444; display: flex; align-items: center; justify-content: center; overflow: hidden; }
         .preview-box img { max-width: 100%; max-height: 100%; object-fit: contain; }
         .color-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 15px; }
-        .color-swatch { aspect-ratio: 1; border-radius: 8px; cursor: pointer; border: 2px solid transparent; }
+        .color-swatch { aspect-ratio: 1; border-radius: 8px; cursor: pointer; border: 2px solid transparent; background-size: cover; background-position: center; }
         .color-swatch.selected { border-color: white; box-shadow: 0 0 15px rgba(255,255,255,0.4); }
         
         #crosshair { position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; background: white; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; opacity: 0; transition: 0.2s; }
@@ -132,9 +132,10 @@
         </div>
 
         <div id="panel-resize" class="glass-panel side-panel interactive">
-            <h3>Escalar</h3>
+            <h3>Editar Obra</h3>
             <p style="font-size:0.9rem; line-height:1.6; color:#ccc;">
-                Arrastra el cuadro azul en la esquina inferior derecha de cualquier obra para cambiar su tamaño.
+                <b>Mover:</b> Arrastra el cuadro para moverlo por la pared.<br>
+                <b>Escalar:</b> Arrastra el cuadro azul (esquina inferior) para cambiar el tamaño.
             </p>
         </div>
         
@@ -165,7 +166,17 @@
         const ROOM_SIZE=20, WALL_HEIGHT=7;
         let walls=[], collidables=[], arts=[], roomGrid=new Map();
         const keyState={};
-        const state = { mode:'decorate', subMode:'image', paintTexture:'wall_red', placement:{active:false, texture:null, ratio:1, type:'image', ghost:null, contentData:null}, draggingHandle: null, initialScale: 1, initialDist: 0 };
+        const state = { 
+            mode:'decorate', 
+            subMode:'image', 
+            paintTexture:'wall_red', 
+            placement:{active:false, texture:null, ratio:1, type:'image', ghost:null, contentData:null}, 
+            draggingHandle: null, 
+            draggingArt: null,
+            dragOffset: new THREE.Vector3(),
+            initialScale: 1, 
+            initialDist: 0 
+        };
         const ASSET_BASE = 'https://logise1.github.io/museumaker/assets/';
 
         function loadTex(n, r=1) { const t=new THREE.TextureLoader().load(ASSET_BASE+n); t.colorSpace='srgb'; t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(r,r); return t; }
@@ -176,6 +187,14 @@
             wall_blue: new THREE.MeshStandardMaterial({ map: loadTex('blue.png'), side: 2 }),
             wall_dark: new THREE.MeshStandardMaterial({ color: 0x222, side: 2 }),
             wood: new THREE.MeshStandardMaterial({ map: loadTex('darkwood.jpg') })
+        };
+        
+        // Mapa para iconos de UI
+        const texIcons = {
+            wall_default: 'marble.jpg',
+            wall_red: 'darkred.png',
+            wall_blue: 'blue.png',
+            wall_dark: null 
         };
 
         onAuthStateChanged(auth, u => { currentUser=u; if(u) { document.getElementById('user-welcome').innerText="Hola, "+u.email; loadDashboard(); showLayer('dashboard-layer'); } else showLayer('auth-layer'); });
@@ -338,14 +357,25 @@
                     if (state.mode === 'resize') {
                         const m=new THREE.Vector2((e.clientX/window.innerWidth)*2-1,-(e.clientY/window.innerHeight)*2+1);
                         raycaster.setFromCamera(m,camera);
+                        
+                        // 1. Chequear manijas (handles) primero
                         let handles = [];
                         arts.forEach(a => a.children.forEach(c => { if(c.userData.isResizeHandle) handles.push(c); }));
-                        const h = raycaster.intersectObjects(handles);
+                        let h = raycaster.intersectObjects(handles);
+                        
                         if(h.length > 0) {
                             state.draggingHandle = h[0].object.userData.parentMesh;
                             state.initialScale = state.draggingHandle.scale.x;
                             const intersectPoint = h[0].point;
                             state.initialDist = intersectPoint.distanceTo(state.draggingHandle.position);
+                        } else {
+                            // 2. Si no es manija, chequear si es el cuadro para MOVER
+                            h = raycaster.intersectObjects(arts);
+                            if(h.length > 0) {
+                                state.draggingArt = h[0].object;
+                                // Guardar offset para mantener la posición relativa del click
+                                state.dragOffset = h[0].point.clone().sub(state.draggingArt.position);
+                            }
                         }
                     }
                 } 
@@ -354,6 +384,7 @@
                 if(!e.target.closest('.interactive')){ 
                     isDrag=false; 
                     state.draggingHandle = null; 
+                    state.draggingArt = null;
                     if(performance.now()-startT<500 && !controls.isLocked) onClick(e); 
                 } 
             });
@@ -395,7 +426,6 @@
             ['walk','decorate','resize','paint','build'].forEach(m=>{ 
                 document.getElementById('dock-'+m).onclick=(e)=>{ 
                     state.mode=m; 
-                    // CORRECCIÓN: Si cambias de modo, deja de colocar cuadros
                     state.placement.active = false;
                     if(state.placement.ghost) state.placement.ghost.visible = false;
                     
@@ -416,7 +446,21 @@
                 } 
             });
             const pg=document.getElementById('paint-grid');
-            Object.keys(mats).forEach(k=>{ if(k.startsWith('wall_')){ const d=document.createElement('div'); d.className='color-swatch'; d.style.background=(k==='wall_red'?'#800':k==='wall_blue'?'#008':k==='wall_dark'?'#222':'#eee'); d.onclick=()=>{ document.querySelectorAll('.color-swatch').forEach(s=>s.classList.remove('selected')); d.classList.add('selected'); state.paintTexture=k; }; pg.appendChild(d); } });
+            Object.keys(mats).forEach(k=>{ 
+                if(k.startsWith('wall_')){ 
+                    const d=document.createElement('div'); 
+                    d.className='color-swatch'; 
+                    // Usar textura real si existe
+                    if(texIcons[k]) {
+                        d.style.backgroundImage = `url(${ASSET_BASE + texIcons[k]})`;
+                        d.style.backgroundColor = '#000';
+                    } else {
+                        d.style.background = '#222';
+                    }
+                    d.onclick=()=>{ document.querySelectorAll('.color-swatch').forEach(s=>s.classList.remove('selected')); d.classList.add('selected'); state.paintTexture=k; }; 
+                    pg.appendChild(d); 
+                } 
+            });
         }
         function updateDecorUI() { document.getElementById('opts-img').style.display=state.subMode==='image'?'block':'none'; document.getElementById('opts-txt').style.display=state.subMode==='text'?'block':'none'; }
         function setLabel(t) { const l=document.getElementById('cursor-label'); l.innerText=t; l.style.opacity=1; }
@@ -484,10 +528,26 @@
 
         function onHover(e) { 
             if(controls.isLocked) return; 
-            
+            const m=new THREE.Vector2((e.clientX/window.innerWidth)*2-1,-(e.clientY/window.innerHeight)*2+1);
+            raycaster.setFromCamera(m,camera);
+
+            // LOGICA DE MOVIMIENTO (DRAG ART)
+            if(isDrag && state.mode === 'resize' && state.draggingArt) {
+                // Crear un plano infinito en la posición del arte, orientado según su normal
+                const normal = new THREE.Vector3(0,0,1).applyQuaternion(state.draggingArt.quaternion);
+                const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, state.draggingArt.position);
+                const intersect = new THREE.Vector3();
+                raycaster.ray.intersectPlane(plane, intersect);
+                
+                if(intersect) {
+                    // Mover el arte a la nueva posición menos el offset inicial
+                    state.draggingArt.position.copy(intersect.sub(state.dragOffset));
+                }
+                return;
+            }
+
+            // LOGICA DE ESCALADO (DRAG HANDLE)
             if(isDrag && state.mode === 'resize' && state.draggingHandle) {
-                const m=new THREE.Vector2((e.clientX/window.innerWidth)*2-1,-(e.clientY/window.innerHeight)*2+1);
-                raycaster.setFromCamera(m,camera);
                 const plane = new THREE.Plane();
                 const normal = new THREE.Vector3(0,0,1).applyQuaternion(state.draggingHandle.quaternion);
                 plane.setFromNormalAndCoplanarPoint(normal, state.draggingHandle.position);
@@ -519,8 +579,7 @@
                 lastM={x:e.clientX,y:e.clientY}; 
                 return; 
             } 
-            const m=new THREE.Vector2((e.clientX/window.innerWidth)*2-1,-(e.clientY/window.innerHeight)*2+1); 
-            raycaster.setFromCamera(m,camera); 
+            
             walls.forEach(w=>w.material.emissive?w.material.emissive.setHex(0):null); 
             document.getElementById('cursor-label').style.opacity=0; 
             
@@ -552,10 +611,13 @@
                 arts.forEach(a => a.children.forEach(c => { if(c.userData.isResizeHandle) handles.push(c); }));
                 const h = raycaster.intersectObjects(handles);
                 if(h.length) {
-                    setLabel("Arrastrar");
+                    setLabel("Escalar");
                     h[0].object.material.color.setHex(0xffffff); 
                 } else {
                     handles.forEach(h => h.material.color.setHex(0x3b82f6)); 
+                    // Chequear si hover sobre arte para mostrar etiqueta Mover
+                    const hArt = raycaster.intersectObjects(arts);
+                    if(hArt.length > 0) setLabel("Mover");
                 }
             }
         }
