@@ -63,7 +63,6 @@
         .dock-btn { background: var(--glass); backdrop-filter: blur(10px); border: 1px solid var(--glass-border); color: var(--text-muted); padding: 12px 25px; border-radius: 20px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 90px; transition: 0.3s; }
         .dock-btn.active { background: var(--accent); border-color: var(--accent); color: white; box-shadow: 0 0 20px rgba(59, 130, 246, 0.4); }
         
-        /* CORRECCIÓN: Pointer events auto para asegurar clicks */
         #canvas-wrapper { pointer-events: auto; }
 
         .preview-box { width: 100%; height: 140px; background: #000; border-radius: 8px; margin-bottom: 15px; border: 1px dashed #444; display: flex; align-items: center; justify-content: center; overflow: hidden; }
@@ -102,7 +101,6 @@
                 <span style="font-size:0.7rem; color:var(--text-muted);" id="save-status">Guardado</span>
             </div>
             <div class="top-group">
-                <!-- BOTONES NUEVOS EXPORT/IMPORT -->
                 <input type="file" id="import-input" accept=".expo" style="display:none">
                 <button id="btn-import" class="secondary" style="width:auto; font-size:0.9rem;">📥 Importar</button>
                 <button id="btn-export" class="secondary" style="width:auto; font-size:0.9rem;">📤 Exportar</button>
@@ -297,15 +295,11 @@
                     m.add(f); 
                 }
                 
-                // --- HANDLE DE RESIZE ---
                 const handleGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
                 const handleMat = new THREE.MeshBasicMaterial({color: 0x3b82f6});
                 const handle = new THREE.Mesh(handleGeo, handleMat);
                 handle.position.set(w/2, -h/2, 0.1); 
-                
-                // CORRECCIÓN: Invertir escala del handle para que se mantenga visualmente igual
                 handle.scale.set(1/scale, 1/scale, 1);
-                
                 handle.userData = { isResizeHandle: true, parentMesh: m };
                 handle.visible = false; 
                 m.add(handle);
@@ -360,7 +354,6 @@
                 if(!e.target.closest('.interactive')){ 
                     isDrag=false; 
                     state.draggingHandle = null; 
-                    // CORRECCIÓN: Aumentado el tiempo para detectar click a 500ms
                     if(performance.now()-startT<500 && !controls.isLocked) onClick(e); 
                 } 
             });
@@ -402,6 +395,10 @@
             ['walk','decorate','resize','paint','build'].forEach(m=>{ 
                 document.getElementById('dock-'+m).onclick=(e)=>{ 
                     state.mode=m; 
+                    // CORRECCIÓN: Si cambias de modo, deja de colocar cuadros
+                    state.placement.active = false;
+                    if(state.placement.ghost) state.placement.ghost.visible = false;
+                    
                     document.querySelectorAll('.dock-btn').forEach(b=>b.classList.remove('active')); 
                     e.currentTarget.classList.add('active'); 
                     document.querySelectorAll('.side-panel').forEach(p=>p.style.display='none'); 
@@ -508,7 +505,6 @@
                          
                          state.draggingHandle.scale.set(newScale, newScale, 1);
                          
-                         // CORRECCIÓN: Mantener el handle del mismo tamaño visual
                          state.draggingHandle.children.forEach(c => {
                              if(c.userData.isResizeHandle) c.scale.set(1/newScale, 1/newScale, 1);
                          });
@@ -595,6 +591,10 @@
 
                     scene.add(ms); 
                     arts.push(ms); 
+                    
+                    // CORRECCIÓN: Detener colocación después de poner uno
+                    state.placement.active = false;
+                    state.placement.ghost.visible = false;
                 } 
             } else if(state.mode==='paint'){ 
                 const h=raycaster.intersectObjects(walls); 
