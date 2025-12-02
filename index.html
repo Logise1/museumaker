@@ -63,6 +63,9 @@
         .dock-btn { background: var(--glass); backdrop-filter: blur(10px); border: 1px solid var(--glass-border); color: var(--text-muted); padding: 12px 25px; border-radius: 20px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 90px; transition: 0.3s; }
         .dock-btn.active { background: var(--accent); border-color: var(--accent); color: white; box-shadow: 0 0 20px rgba(59, 130, 246, 0.4); }
         
+        /* CORRECCIÓN: Pointer events auto para asegurar clicks */
+        #canvas-wrapper { pointer-events: auto; }
+
         .preview-box { width: 100%; height: 140px; background: #000; border-radius: 8px; margin-bottom: 15px; border: 1px dashed #444; display: flex; align-items: center; justify-content: center; overflow: hidden; }
         .preview-box img { max-width: 100%; max-height: 100%; object-fit: contain; }
         .color-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 15px; }
@@ -164,7 +167,6 @@
         const ROOM_SIZE=20, WALL_HEIGHT=7;
         let walls=[], collidables=[], arts=[], roomGrid=new Map();
         const keyState={};
-        // MODIFICADO: Agregado handle para resize
         const state = { mode:'decorate', subMode:'image', paintTexture:'wall_red', placement:{active:false, texture:null, ratio:1, type:'image', ghost:null, contentData:null}, draggingHandle: null, initialScale: 1, initialDist: 0 };
         const ASSET_BASE = 'https://logise1.github.io/museumaker/assets/';
 
@@ -207,7 +209,6 @@
         function loadEditor(id, data) { currentMuseumId=id; document.getElementById('editor-title').innerText=data.name; showLayer('editor-layer'); if(!renderer) initEngine(); else resetScene(); loadSceneData(JSON.parse(data.data)); }
         document.getElementById('btn-back-dash').onclick = () => showLayer('dashboard-layer');
         
-        // --- NUEVA LÓGICA DE EXPORTACIÓN ---
         document.getElementById('btn-export').onclick = () => {
             const dataStr = JSON.stringify(exportScene());
             const blob = new Blob([dataStr], {type: "application/json"});
@@ -221,7 +222,6 @@
             URL.revokeObjectURL(url);
         };
         
-        // --- NUEVA LÓGICA DE IMPORTACIÓN ---
         document.getElementById('btn-import').onclick = () => document.getElementById('import-input').click();
         document.getElementById('import-input').onchange = (e) => {
             const file = e.target.files[0];
@@ -238,7 +238,7 @@
                 }
             };
             reader.readAsText(file);
-            e.target.value = ''; // Reset
+            e.target.value = '';
         };
 
         document.getElementById('btn-save').onclick = async () => {
@@ -285,7 +285,7 @@
                 const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h), new THREE.MeshBasicMaterial({map:t,transparent:true,side:2}));
                 m.position.fromArray(a.pos); 
                 m.quaternion.fromArray(a.rot); 
-                // Aplicar escala guardada o default
+                
                 const scale = a.scale || 1;
                 m.scale.set(scale, scale, 1);
                 
@@ -301,9 +301,13 @@
                 const handleGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
                 const handleMat = new THREE.MeshBasicMaterial({color: 0x3b82f6});
                 const handle = new THREE.Mesh(handleGeo, handleMat);
-                handle.position.set(w/2, -h/2, 0.1); // Esquina inferior derecha
+                handle.position.set(w/2, -h/2, 0.1); 
+                
+                // CORRECCIÓN: Invertir escala del handle para que se mantenga visualmente igual
+                handle.scale.set(1/scale, 1/scale, 1);
+                
                 handle.userData = { isResizeHandle: true, parentMesh: m };
-                handle.visible = false; // Solo visible en modo resize
+                handle.visible = false; 
                 m.add(handle);
 
                 scene.add(m); arts.push(m);
@@ -337,18 +341,15 @@
                 if(!e.target.closest('.interactive') && !controls.isLocked){ 
                     isDrag=true; startT=performance.now(); lastM={x:e.clientX,y:e.clientY}; 
                     
-                    // Logic for Resizing Click
                     if (state.mode === 'resize') {
                         const m=new THREE.Vector2((e.clientX/window.innerWidth)*2-1,-(e.clientY/window.innerHeight)*2+1);
                         raycaster.setFromCamera(m,camera);
-                        // Intersectar con los handles (que son hijos de las arts)
                         let handles = [];
                         arts.forEach(a => a.children.forEach(c => { if(c.userData.isResizeHandle) handles.push(c); }));
                         const h = raycaster.intersectObjects(handles);
                         if(h.length > 0) {
                             state.draggingHandle = h[0].object.userData.parentMesh;
                             state.initialScale = state.draggingHandle.scale.x;
-                            // Distancia inicial desde el centro del objeto al punto del click
                             const intersectPoint = h[0].point;
                             state.initialDist = intersectPoint.distanceTo(state.draggingHandle.position);
                         }
@@ -358,8 +359,9 @@
             window.addEventListener('mouseup',e=>{ 
                 if(!e.target.closest('.interactive')){ 
                     isDrag=false; 
-                    state.draggingHandle = null; // Soltar handle
-                    if(performance.now()-startT<200 && !controls.isLocked) onClick(e); 
+                    state.draggingHandle = null; 
+                    // CORRECCIÓN: Aumentado el tiempo para detectar click a 500ms
+                    if(performance.now()-startT<500 && !controls.isLocked) onClick(e); 
                 } 
             });
             window.addEventListener('mousemove',onHover);
@@ -397,7 +399,6 @@
             };
             
             document.getElementById('btn-gen-txt').onclick=()=>{ const t=document.getElementById('txt-in').value; if(t){ const tex=generateTextTex(t); state.placement={active:true,texture:tex,ratio:4,type:'text',contentData:t,ghost:state.placement.ghost}; } };
-            // AGREGADO 'resize' a la lista
             ['walk','decorate','resize','paint','build'].forEach(m=>{ 
                 document.getElementById('dock-'+m).onclick=(e)=>{ 
                     state.mode=m; 
@@ -405,11 +406,9 @@
                     e.currentTarget.classList.add('active'); 
                     document.querySelectorAll('.side-panel').forEach(p=>p.style.display='none'); 
                     
-                    // Mostrar panel correspondiente
                     const panel = document.getElementById('panel-'+m);
                     if(panel) panel.style.display='block';
 
-                    // Visibilidad de handles
                     arts.forEach(a => {
                         a.children.forEach(c => {
                             if(c.userData.isResizeHandle) c.visible = (m === 'resize');
@@ -468,7 +467,6 @@
             return new Blob([ab], {type: mimeString});
         }
 
-        // AGREGADO: Guardar Escala
         function exportScene() { 
             const rd=[]; 
             roomGrid.forEach((v,k)=>{ 
@@ -482,7 +480,7 @@
                 type:m.userData.type,
                 ratio:m.userData.ratio,
                 content:m.userData.content,
-                scale: m.scale.x // Guardamos la escala actual
+                scale: m.scale.x
             })); 
             return {rooms:rd,artData:ad}; 
         }
@@ -490,41 +488,30 @@
         function onHover(e) { 
             if(controls.isLocked) return; 
             
-            // LOGICA DE ARRASTRE PARA RESIZE
             if(isDrag && state.mode === 'resize' && state.draggingHandle) {
                 const m=new THREE.Vector2((e.clientX/window.innerWidth)*2-1,-(e.clientY/window.innerHeight)*2+1);
                 raycaster.setFromCamera(m,camera);
-                
-                // Creamos un plano imaginario alineado con la pared para proyectar el mouse
                 const plane = new THREE.Plane();
                 const normal = new THREE.Vector3(0,0,1).applyQuaternion(state.draggingHandle.quaternion);
                 plane.setFromNormalAndCoplanarPoint(normal, state.draggingHandle.position);
-                
                 const target = new THREE.Vector3();
                 raycaster.ray.intersectPlane(plane, target);
                 
                 if(target) {
-                    const currentDist = target.distanceTo(state.draggingHandle.position);
-                    // Factor de escala simple basado en movimiento
-                    // Comparamos distancia al centro vs distancia original al centro
-                    // Centro del mesh
                     const center = state.draggingHandle.position.clone();
-                    // Simplemente usaremos la distancia desde el centro del objeto al punto del mouse
                     const newDist = target.distanceTo(center);
                     
-                    // Ajuste de sensibilidad
-                    // Si el mouse está más lejos que el punto inicial, crece.
-                    
-                    // Opción simple: Escala = Distancia / Constante
-                    // Mejor opción: Escala = EscalaInicial * (DistanciaActual / DistanciaInicial)
-                    // Nota: initialDist se calculó en mousedown
                     if(state.initialDist > 0.1) {
                          let newScale = state.initialScale * (newDist / state.initialDist);
-                         // Limites
                          if(newScale < 0.2) newScale = 0.2;
                          if(newScale > 5) newScale = 5;
                          
                          state.draggingHandle.scale.set(newScale, newScale, 1);
+                         
+                         // CORRECCIÓN: Mantener el handle del mismo tamaño visual
+                         state.draggingHandle.children.forEach(c => {
+                             if(c.userData.isResizeHandle) c.scale.set(1/newScale, 1/newScale, 1);
+                         });
                     }
                 }
                 return;
@@ -565,15 +552,14 @@
                     setLabel(state.mode==='paint'?"Pintar":"Expandir"); 
                 } 
             } else if(state.mode === 'resize') {
-                // Highlight handles
                 let handles = [];
                 arts.forEach(a => a.children.forEach(c => { if(c.userData.isResizeHandle) handles.push(c); }));
                 const h = raycaster.intersectObjects(handles);
                 if(h.length) {
                     setLabel("Arrastrar");
-                    h[0].object.material.color.setHex(0xffffff); // Highlight
+                    h[0].object.material.color.setHex(0xffffff); 
                 } else {
-                    handles.forEach(h => h.material.color.setHex(0x3b82f6)); // Reset
+                    handles.forEach(h => h.material.color.setHex(0x3b82f6)); 
                 }
             }
         }
@@ -599,7 +585,6 @@
                         ms.add(f); 
                     } 
                     
-                    // AÑADIR HANDLE AL NUEVO OBJETO
                     const handleGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
                     const handleMat = new THREE.MeshBasicMaterial({color: 0x3b82f6});
                     const handle = new THREE.Mesh(handleGeo, handleMat);
