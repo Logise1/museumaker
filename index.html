@@ -356,7 +356,8 @@
             window.addEventListener('mouseup',e=>{ 
                 if(!e.target.closest('.interactive')){ 
                     isDrag=false; 
-                    if(performance.now()-startT<200 && !controls.isLocked && !state.isDraggingGizmo) onClick(e); 
+                    // FIX: Increased threshold to 300ms to allow "slower" clicks without counting as drag
+                    if(performance.now()-startT<300 && !controls.isLocked && !state.isDraggingGizmo) onClick(e); 
                 } 
             });
             window.addEventListener('mousemove',onHover);
@@ -536,10 +537,19 @@
             if(state.mode==='decorate'){ 
                 // 1. Check for art selection (for resize)
                 if(state.subMode !== 'delete' && !state.placement.active) {
-                    const h = raycaster.intersectObjects(arts);
+                    // FIX: Recursive search to hit children (frames)
+                    const h = raycaster.intersectObjects(arts, true);
                     if(h.length > 0) {
-                        transformControl.attach(h[0].object);
-                        return; // Stop further processing if we selected an object
+                        // Find the root object that is in the 'arts' array
+                        let target = h[0].object;
+                        while(target.parent && !arts.includes(target)) {
+                            target = target.parent;
+                        }
+                        // If we found a valid parent in 'arts' (or 'arts' includes the hit object directly)
+                        if(arts.includes(target)) {
+                             transformControl.attach(target);
+                             return; // Stop further processing if we selected an object
+                        }
                     } else {
                         // If clicked empty space/wall, detach unless we are placing
                         transformControl.detach();
@@ -547,11 +557,16 @@
                 }
 
                 if(state.subMode==='delete'){ 
-                    const h=raycaster.intersectObjects(arts); 
+                    const h=raycaster.intersectObjects(arts, true); 
                     if(h.length){ 
-                        transformControl.detach(); // Detach if deleting
-                        scene.remove(h[0].object); 
-                        arts=arts.filter(x=>x!==h[0].object); 
+                        let target = h[0].object;
+                        while(target.parent && !arts.includes(target)) target = target.parent;
+                        
+                        if(arts.includes(target)){
+                            transformControl.detach(); // Detach if deleting
+                            scene.remove(target); 
+                            arts=arts.filter(x=>x!==target); 
+                        }
                     } 
                 } else if(state.placement.active&&state.placement.ghost&&state.placement.ghost.visible){ 
                     const g=state.placement.ghost, ms=g.clone(); ms.material=g.material.clone(); ms.material.opacity=1; ms.material.transparent=true; ms.userData={type:state.placement.type,ratio:state.placement.ratio,content:state.placement.contentData}; 
