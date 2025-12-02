@@ -482,7 +482,11 @@
 
         function onHover(e) { 
             if(controls.isLocked) return; 
-            if(isDrag && !state.isDraggingGizmo){ 
+
+            // FIX 2: Check if hovering Gizmo handles to prevent camera slip
+            const hoveringGizmo = transformControl.axis !== null;
+
+            if(isDrag && !state.isDraggingGizmo && !hoveringGizmo){ 
                 camera.rotation.y-=(e.clientX-lastM.x)*0.002; 
                 camera.rotation.x=Math.max(-1.5,Math.min(1.5,camera.rotation.x-(e.clientY-lastM.y)*0.002)); 
                 lastM={x:e.clientX,y:e.clientY}; 
@@ -544,8 +548,9 @@
                     if(state.placement.type==='image'){ const f=new THREE.Mesh(new THREE.BoxGeometry(ms.geometry.parameters.width+0.2,ms.geometry.parameters.height+0.2,0.05), new THREE.MeshStandardMaterial({color:0x111})); f.position.z=-0.03; ms.add(f); } 
                     scene.add(ms); arts.push(ms); 
                     
-                    // Stop placing after one click? Or keep active? 
-                    // Let's keep active for multiple placements, user can click mode to stop.
+                    // FIX 1: Stop placement after one click
+                    state.placement.active = false;
+                    if(state.placement.ghost) state.placement.ghost.visible = false;
                 } 
             } else if(state.mode==='paint'){ 
                 const h=raycaster.intersectObjects(walls); 
