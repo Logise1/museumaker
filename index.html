@@ -338,6 +338,9 @@
         function setupInteraction() {
             window.addEventListener('keydown',e=>keyState[e.code]=true); window.addEventListener('keyup',e=>keyState[e.code]=false);
             window.addEventListener('mousedown',e=>{ 
+                // FIX: Check if hovering gizmo (transform controls) axis
+                if(transformControl.axis) return; 
+                
                 if(state.isDraggingGizmo) return; // Ignore drag if using gizmo
                 if(!e.target.closest('.interactive') && !controls.isLocked){ 
                     isDrag=true; startT=performance.now(); lastM={x:e.clientX,y:e.clientY}; 
@@ -548,9 +551,13 @@
                     if(state.placement.type==='image'){ const f=new THREE.Mesh(new THREE.BoxGeometry(ms.geometry.parameters.width+0.2,ms.geometry.parameters.height+0.2,0.05), new THREE.MeshStandardMaterial({color:0x111})); f.position.z=-0.03; ms.add(f); } 
                     scene.add(ms); arts.push(ms); 
                     
-                    // FIX 1: Stop placement after one click
+                    // FIX 1: Stop placement after one click (FORCE CLEANUP)
                     state.placement.active = false;
-                    if(state.placement.ghost) state.placement.ghost.visible = false;
+                    scene.remove(state.placement.ghost);
+                    state.placement.ghost = null; // Destroy ghost ref
+                    
+                    // Auto-attach transform to the new object so you can resize immediately
+                    transformControl.attach(ms);
                 } 
             } else if(state.mode==='paint'){ 
                 const h=raycaster.intersectObjects(walls); 
