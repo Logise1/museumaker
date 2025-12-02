@@ -98,7 +98,8 @@
 
     <!-- 3. EDITOR -->
     <div id="editor-layer" class="layer">
-        <div id="canvas-wrapper" style="position:absolute; top:0; left:0; width:100%; height:100%; z-index:-1;"></div>
+        <!-- FIX: Added 'interactive' class so Canvas receives pointer events for TransformControls -->
+        <div id="canvas-wrapper" class="interactive" style="position:absolute; top:0; left:0; width:100%; height:100%; z-index:-1;"></div>
         
         <!-- TOP BAR -->
         <div id="top-bar">
@@ -277,7 +278,13 @@
             transformControl = new TransformControls(camera, renderer.domElement);
             transformControl.addEventListener('dragging-changed', function (event) {
                 state.isDraggingGizmo = event.value;
+                // Force drag false just in case
+                if(event.value) isDrag = false;
             });
+            // FIX: Ensure transform controls block other events properly
+            transformControl.addEventListener('mouseDown', () => { state.isDraggingGizmo = true; isDrag = false; });
+            transformControl.addEventListener('mouseUp', () => { state.isDraggingGizmo = false; });
+
             transformControl.setMode('scale'); // Solo escalar por ahora
             scene.add(transformControl);
 
