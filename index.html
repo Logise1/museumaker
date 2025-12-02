@@ -54,7 +54,7 @@
         /* EDITOR UI */
         #top-bar { display: flex; justify-content: space-between; align-items: center; padding: 20px 30px; background: linear-gradient(180deg, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%); pointer-events: none; }
         #top-bar > * { pointer-events: auto; }
-        .top-group { display: flex; gap: 10px; align-items: center; }
+        .top-group { display: flex; gap: 10px; }
         
         .side-panel { position: absolute; right: 30px; top: 100px; width: 300px; display: none; animation: slideLeft 0.4s ease; }
         @keyframes slideLeft { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }
@@ -74,18 +74,9 @@
         
         #modal-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.8); z-index: 100; display: none; align-items: center; justify-content: center; }
         .link-box { background: #111; padding: 15px; border-radius: 8px; color: #10b981; font-family: monospace; margin: 20px 0; word-break: break-all; border: 1px dashed #333; }
-        
-        /* FILE INPUT HIDDEN */
-        #expo-file-input { display: none; }
     </style>
     <script type="importmap">
-        { "imports": { 
-            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", 
-            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/", 
-            "firebase/app": "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js", 
-            "firebase/auth": "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js", 
-            "firebase/firestore": "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js" 
-        } }
+        { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/", "firebase/app": "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js", "firebase/auth": "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js", "firebase/firestore": "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js" } }
     </script>
 </head>
 <body>
@@ -98,58 +89,61 @@
 
     <!-- 3. EDITOR -->
     <div id="editor-layer" class="layer">
-        <!-- FIX: Added 'interactive' class so Canvas receives pointer events for TransformControls -->
-        <div id="canvas-wrapper" class="interactive" style="position:absolute; top:0; left:0; width:100%; height:100%; z-index:-1;"></div>
-        
-        <!-- TOP BAR -->
+        <div id="canvas-wrapper" style="position:absolute; top:0; left:0; width:100%; height:100%; z-index:-1;"></div>
         <div id="top-bar">
             <div class="top-group">
                 <button class="secondary" id="btn-back-dash" style="width:auto;">← Salir</button>
-                <div style="margin-left:15px;">
-                    <h3 id="editor-title" style="margin:0; font-size:1rem;">...</h3>
-                    <span style="font-size:0.7rem; color:var(--text-muted);" id="save-status">Guardado</span>
-                </div>
             </div>
-            
+            <div style="text-align:center;">
+                <h3 id="editor-title" style="margin:0; font-size:1rem;">...</h3>
+                <span style="font-size:0.7rem; color:var(--text-muted);" id="save-status">Guardado</span>
+            </div>
             <div class="top-group">
-                <button class="secondary" id="btn-import-expo" style="width:auto; margin-right:5px;">📂 Importar .expo</button>
-                <button class="secondary" id="btn-export-expo" style="width:auto; margin-right:5px;">💾 Exportar .expo</button>
+                <!-- BOTONES NUEVOS EXPORT/IMPORT -->
+                <input type="file" id="import-input" accept=".expo" style="display:none">
+                <button id="btn-import" class="secondary" style="width:auto; font-size:0.9rem;">📥 Importar</button>
+                <button id="btn-export" class="secondary" style="width:auto; font-size:0.9rem;">📤 Exportar</button>
                 <button id="btn-save" style="width:auto; background:#10b981;">☁️ Publicar</button>
-                <input type="file" id="expo-file-input" accept=".expo">
             </div>
         </div>
         
-        <!-- DECORATE PANEL -->
         <div id="panel-decorate" class="glass-panel side-panel interactive">
             <h3>Decoración</h3>
-            <p style="font-size:0.85rem; color:#aaa; margin-bottom:15px;">
-                Sube imágenes o crea texto. Haz clic para colocar.
-                <br><b>¡Nuevo!</b> Haz clic en un cuadro colocado para cambiar su tamaño con los tiradores.
-            </p>
+            <p style="font-size:0.85rem; color:#aaa; margin-bottom:15px;">Sube tus imágenes o crea placas de texto. Luego, haz clic en cualquier pared para colgar tu obra.</p>
             <div style="display:flex; gap:10px; margin-bottom:20px;"><button id="btn-type-img" class="secondary">Imagen</button><button id="btn-type-txt" class="secondary">Texto</button></div>
             <div id="opts-img">
                 <div class="preview-box"><span id="img-placeholder" style="color:#444; font-size:0.8rem;">Vista Previa</span><img id="img-preview" style="display:none"></div>
                 <label for="file-in" class="secondary" style="display:block; padding:10px; text-align:center; border-radius:8px; cursor:pointer; background:rgba(255,255,255,0.1);">📂 Subir</label>
                 <input type="file" id="file-in" accept="image/*" style="display:none">
             </div>
-            <div id="opts-txt" style="display:none;"><input type="text" id="txt-in" placeholder="Texto..."><button id="btn-gen-txt">Generar</button></div>
-            <div style="margin-top:20px; padding-top:15px; border-top:1px solid var(--glass-border);">
-                <button id="btn-del-mode" class="danger">🗑️ Borrar Objeto</button>
-            </div>
+            <div id="opts-txt" style="display:none;"><input type="text" id="txt-in" placeholder="Texto..."><button id="btn-gen-txt">Generar</button></div><div style="margin-top:20px; padding-top:15px; border-top:1px solid var(--glass-border);"><button id="btn-del-mode" class="danger">🗑️ Borrar Objeto</button></div>
         </div>
         
-        <!-- MATERIAL PANEL -->
         <div id="panel-paint" class="glass-panel side-panel interactive"><h3>Materiales</h3><p style="font-size:0.85rem; color:#aaa;">Selecciona un acabado y haz clic en una pared o suelo para cambiar su apariencia instantáneamente.</p><div class="color-grid" id="paint-grid"></div></div>
         
-        <!-- BUILD PANEL -->
         <div id="panel-build" class="glass-panel side-panel interactive">
             <h3>Arquitectura</h3>
             <p style="font-size:0.9rem; line-height:1.6; color:#ccc;">
-                Expande tu museo. Al hacer clic en una pared, se creará una nueva sala conectada.
+                Expande tu museo infinitamente. Al hacer clic en cualquier pared existente, se derribará para crear un arco de paso hacia una nueva sala generada automáticamente.
+                <br><br>
+                <b>Nota:</b> Solo puedes construir si no hay otra sala bloqueando el camino al otro lado.
+            </p>
+        </div>
+
+        <div id="panel-resize" class="glass-panel side-panel interactive">
+            <h3>Escalar</h3>
+            <p style="font-size:0.9rem; line-height:1.6; color:#ccc;">
+                Arrastra el cuadro azul en la esquina inferior derecha de cualquier obra para cambiar su tamaño.
             </p>
         </div>
         
-        <div class="dock-container"><div class="dock-btn" data-mode="walk" id="dock-walk"><i>🚶</i>Explorar</div><div class="dock-btn active" data-mode="decorate" id="dock-decorate"><i>🖼️</i>Decorar</div><div class="dock-btn" data-mode="paint" id="dock-paint"><i>🎨</i>Pintar</div><div class="dock-btn" data-mode="build" id="dock-build"><i>🧱</i>Construir</div></div>
+        <div class="dock-container">
+            <div class="dock-btn" data-mode="walk" id="dock-walk"><i>🚶</i>Explorar</div>
+            <div class="dock-btn active" data-mode="decorate" id="dock-decorate"><i>🖼️</i>Decorar</div>
+            <div class="dock-btn" data-mode="resize" id="dock-resize"><i>📏</i>Escalar</div>
+            <div class="dock-btn" data-mode="paint" id="dock-paint"><i>🎨</i>Pintar</div>
+            <div class="dock-btn" data-mode="build" id="dock-build"><i>🧱</i>Construir</div>
+        </div>
         <div id="crosshair"></div><div id="cursor-label"></div>
     </div>
 
@@ -158,7 +152,6 @@
     <script type="module">
         import * as THREE from 'three';
         import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
-        import { TransformControls } from 'three/addons/controls/TransformControls.js';
         import { initializeApp } from 'firebase/app';
         import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
         import { getFirestore, collection, addDoc, getDocs, query, where, updateDoc, doc, deleteDoc, orderBy } from 'firebase/firestore';
@@ -167,19 +160,12 @@
         const app = initializeApp(firebaseConfig); const auth = getAuth(app); const db = getFirestore(app);
 
         let currentUser=null, currentMuseumId=null;
-        let camera, scene, renderer, controls, transformControl, clock, raycaster;
+        let camera, scene, renderer, controls, clock, raycaster;
         const ROOM_SIZE=20, WALL_HEIGHT=7;
         let walls=[], collidables=[], arts=[], roomGrid=new Map();
         const keyState={};
-        const state = { 
-            mode:'decorate', 
-            subMode:'image', 
-            paintTexture:'wall_red', 
-            placement:{active:false, texture:null, ratio:1, type:'image', ghost:null, contentData:null}, 
-            isDragging:false,
-            isDraggingGizmo: false, 
-            lastMouse:{x:0,y:0} 
-        };
+        // MODIFICADO: Agregado handle para resize
+        const state = { mode:'decorate', subMode:'image', paintTexture:'wall_red', placement:{active:false, texture:null, ratio:1, type:'image', ghost:null, contentData:null}, draggingHandle: null, initialScale: 1, initialDist: 0 };
         const ASSET_BASE = 'https://logise1.github.io/museumaker/assets/';
 
         function loadTex(n, r=1) { const t=new THREE.TextureLoader().load(ASSET_BASE+n); t.colorSpace='srgb'; t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(r,r); return t; }
@@ -221,40 +207,39 @@
         function loadEditor(id, data) { currentMuseumId=id; document.getElementById('editor-title').innerText=data.name; showLayer('editor-layer'); if(!renderer) initEngine(); else resetScene(); loadSceneData(JSON.parse(data.data)); }
         document.getElementById('btn-back-dash').onclick = () => showLayer('dashboard-layer');
         
-        // --- EXPORTAR / IMPORTAR .EXPO ---
-        document.getElementById('btn-export-expo').onclick = () => {
-            const data = exportScene();
-            const json = JSON.stringify(data);
-            const blob = new Blob([json], {type: 'application/json'});
+        // --- NUEVA LÓGICA DE EXPORTACIÓN ---
+        document.getElementById('btn-export').onclick = () => {
+            const dataStr = JSON.stringify(exportScene());
+            const blob = new Blob([dataStr], {type: "application/json"});
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = (document.getElementById('editor-title').innerText || 'museo') + '.expo';
+            a.download = (document.getElementById('editor-title').innerText || "museo") + ".expo";
+            document.body.appendChild(a);
             a.click();
+            document.body.removeChild(a);
             URL.revokeObjectURL(url);
         };
-
-        document.getElementById('btn-import-expo').onclick = () => document.getElementById('expo-file-input').click();
         
-        document.getElementById('expo-file-input').onchange = (e) => {
+        // --- NUEVA LÓGICA DE IMPORTACIÓN ---
+        document.getElementById('btn-import').onclick = () => document.getElementById('import-input').click();
+        document.getElementById('import-input').onchange = (e) => {
             const file = e.target.files[0];
-            if(!file) return;
+            if (!file) return;
             const reader = new FileReader();
-            reader.onload = (evt) => {
+            reader.onload = (ev) => {
                 try {
-                    const data = JSON.parse(evt.target.result);
+                    const data = JSON.parse(ev.target.result);
                     resetScene();
                     loadSceneData(data);
-                    alert('Museo importado con éxito');
+                    alert("Museo importado con éxito.");
                 } catch(err) {
-                    alert('Error al leer el archivo .expo');
-                    console.error(err);
+                    alert("Error al cargar el archivo .expo: " + err.message);
                 }
             };
             reader.readAsText(file);
-            e.target.value = ''; // Reset input
+            e.target.value = ''; // Reset
         };
-        // ----------------------------------
 
         document.getElementById('btn-save').onclick = async () => {
             const b=document.getElementById('btn-save'); b.innerText="Guardando...";
@@ -274,20 +259,6 @@
             renderer=new THREE.WebGLRenderer({antialias:true}); renderer.setSize(window.innerWidth,window.innerHeight); document.getElementById('canvas-wrapper').appendChild(renderer.domElement);
             controls=new PointerLockControls(camera,document.body); clock=new THREE.Clock(); raycaster=new THREE.Raycaster();
             
-            // TRANSFORM CONTROLS (NUEVO)
-            transformControl = new TransformControls(camera, renderer.domElement);
-            transformControl.addEventListener('dragging-changed', function (event) {
-                state.isDraggingGizmo = event.value;
-                // Force drag false just in case
-                if(event.value) isDrag = false;
-            });
-            // FIX: Ensure transform controls block other events properly
-            transformControl.addEventListener('mouseDown', () => { state.isDraggingGizmo = true; isDrag = false; });
-            transformControl.addEventListener('mouseUp', () => { state.isDraggingGizmo = false; });
-
-            transformControl.setMode('scale'); // Solo escalar por ahora
-            scene.add(transformControl);
-
             // ILUMINACIÓN
             scene.add(new THREE.AmbientLight(0xffffff, 0.8));
             const dl=new THREE.DirectionalLight(0xffffff, 0.5); dl.position.set(10,20,10); scene.add(dl);
@@ -296,7 +267,6 @@
             setupInteraction(); animate();
         }
         function resetScene() {
-            transformControl.detach();
             [...walls,...arts,...collidables].forEach(m=>scene.remove(m)); walls=[]; arts=[]; collidables=[]; roomGrid.clear();
             scene.children.forEach(c=>{ if(c.userData.isRoomGroup) scene.remove(c); });
             camera.position.set(0,3,0); camera.rotation.set(0,0,0);
@@ -310,13 +280,32 @@
                     const i=new Image(); i.crossOrigin="Anonymous"; i.src=a.content; 
                     t=new THREE.Texture(i); i.onload=()=>{t.needsUpdate=true;t.colorSpace='srgb'}; 
                 } else t=generateTextTex(a.content);
-                const w=3, h=w/a.ratio, m=new THREE.Mesh(new THREE.PlaneGeometry(w,h), new THREE.MeshBasicMaterial({map:t,transparent:true,side:2}));
-                m.position.fromArray(a.pos); m.quaternion.fromArray(a.rot); 
-                // LOAD SCALE IF EXISTS
-                if(a.scale) m.scale.fromArray(a.scale);
+                
+                const w=3, h=w/a.ratio;
+                const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h), new THREE.MeshBasicMaterial({map:t,transparent:true,side:2}));
+                m.position.fromArray(a.pos); 
+                m.quaternion.fromArray(a.rot); 
+                // Aplicar escala guardada o default
+                const scale = a.scale || 1;
+                m.scale.set(scale, scale, 1);
                 
                 m.userData={type:a.type,ratio:a.ratio,content:a.content};
-                if(a.type==='image'){ const f=new THREE.Mesh(new THREE.BoxGeometry(w+0.2,h+0.2,0.05), new THREE.MeshStandardMaterial({color:0x111})); f.position.z=-0.03; m.add(f); }
+                
+                if(a.type==='image'){ 
+                    const f=new THREE.Mesh(new THREE.BoxGeometry(w+0.2,h+0.2,0.05), new THREE.MeshStandardMaterial({color:0x111})); 
+                    f.position.z=-0.03; 
+                    m.add(f); 
+                }
+                
+                // --- HANDLE DE RESIZE ---
+                const handleGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+                const handleMat = new THREE.MeshBasicMaterial({color: 0x3b82f6});
+                const handle = new THREE.Mesh(handleGeo, handleMat);
+                handle.position.set(w/2, -h/2, 0.1); // Esquina inferior derecha
+                handle.userData = { isResizeHandle: true, parentMesh: m };
+                handle.visible = false; // Solo visible en modo resize
+                m.add(handle);
+
                 scene.add(m); arts.push(m);
             });
         }
@@ -345,88 +334,89 @@
         function setupInteraction() {
             window.addEventListener('keydown',e=>keyState[e.code]=true); window.addEventListener('keyup',e=>keyState[e.code]=false);
             window.addEventListener('mousedown',e=>{ 
-                // FIX: Check if hovering gizmo (transform controls) axis
-                if(transformControl.axis) return; 
-                
-                if(state.isDraggingGizmo) return; // Ignore drag if using gizmo
                 if(!e.target.closest('.interactive') && !controls.isLocked){ 
                     isDrag=true; startT=performance.now(); lastM={x:e.clientX,y:e.clientY}; 
+                    
+                    // Logic for Resizing Click
+                    if (state.mode === 'resize') {
+                        const m=new THREE.Vector2((e.clientX/window.innerWidth)*2-1,-(e.clientY/window.innerHeight)*2+1);
+                        raycaster.setFromCamera(m,camera);
+                        // Intersectar con los handles (que son hijos de las arts)
+                        let handles = [];
+                        arts.forEach(a => a.children.forEach(c => { if(c.userData.isResizeHandle) handles.push(c); }));
+                        const h = raycaster.intersectObjects(handles);
+                        if(h.length > 0) {
+                            state.draggingHandle = h[0].object.userData.parentMesh;
+                            state.initialScale = state.draggingHandle.scale.x;
+                            // Distancia inicial desde el centro del objeto al punto del click
+                            const intersectPoint = h[0].point;
+                            state.initialDist = intersectPoint.distanceTo(state.draggingHandle.position);
+                        }
+                    }
                 } 
             });
             window.addEventListener('mouseup',e=>{ 
                 if(!e.target.closest('.interactive')){ 
                     isDrag=false; 
-                    // FIX: Increased threshold to 300ms to allow "slower" clicks without counting as drag
-                    if(performance.now()-startT<300 && !controls.isLocked && !state.isDraggingGizmo) onClick(e); 
+                    state.draggingHandle = null; // Soltar handle
+                    if(performance.now()-startT<200 && !controls.isLocked) onClick(e); 
                 } 
             });
             window.addEventListener('mousemove',onHover);
             document.getElementById('btn-type-img').onclick=()=>{state.subMode='image';updateDecorUI()}; document.getElementById('btn-type-txt').onclick=()=>{state.subMode='text';updateDecorUI()}; document.getElementById('btn-del-mode').onclick=()=>{state.subMode='delete';state.placement.active=false};
             
-            // UPLOAD SYSTEM
             document.getElementById('file-in').onchange=async(e)=>{
                 if(!e.target.files[0])return;
                 const file = e.target.files[0];
                 const lbl = document.querySelector('label[for="file-in"]');
                 if(!lbl) return;
-                
                 const originalText = lbl.innerText;
                 lbl.innerText = "Procesando...";
-                
                 try {
                     const compressedB64 = await compressImage(file);
                     document.getElementById('img-preview').src=compressedB64; 
                     document.getElementById('img-preview').style.display='block'; 
                     document.getElementById('img-placeholder').style.display='none';
-                    
                     const i=new Image(); i.src=compressedB64; 
                     i.onload=()=>{ 
                         const t=new THREE.Texture(i); t.needsUpdate=true; t.colorSpace='srgb'; 
                         state.placement={active:true,texture:t,ratio:i.width/i.height,type:'image',contentData:compressedB64,ghost:state.placement.ghost}; 
                     };
-
                     lbl.innerText = "Subiendo...";
                     const blob = dataURItoBlob(compressedB64);
-                    const formData = new FormData();
-                    formData.append('file', blob, "image.jpg");
-                    
+                    const formData = new FormData(); formData.append('file', blob, "image.jpg");
                     const res = await fetch('https://yyf.mubilop.com/api/upload', { method: 'POST', body: formData });
                     if(!res.ok) throw new Error("Upload failed");
-                    
                     const data = await res.json();
-                    const publicUrl = 'https://yyf.mubilop.com' + data.fileUrl;
-                    
-                    console.log("Upload success:", publicUrl);
-                    state.placement.contentData = publicUrl; 
-                    
+                    state.placement.contentData = 'https://yyf.mubilop.com' + data.fileUrl; 
                 } catch(err) {
-                    console.warn("Upload failed, using local base64:", err);
-                    alert("Aviso: Subida falló. Se usará modo local.");
+                    alert("Aviso: Subida falló, usando local.");
                 } finally {
                     lbl.innerText = originalText;
                 }
             };
             
             document.getElementById('btn-gen-txt').onclick=()=>{ const t=document.getElementById('txt-in').value; if(t){ const tex=generateTextTex(t); state.placement={active:true,texture:tex,ratio:4,type:'text',contentData:t,ghost:state.placement.ghost}; } };
-            
-            ['walk','decorate','paint','build'].forEach(m=>{ 
+            // AGREGADO 'resize' a la lista
+            ['walk','decorate','resize','paint','build'].forEach(m=>{ 
                 document.getElementById('dock-'+m).onclick=(e)=>{ 
                     state.mode=m; 
                     document.querySelectorAll('.dock-btn').forEach(b=>b.classList.remove('active')); 
                     e.currentTarget.classList.add('active'); 
                     document.querySelectorAll('.side-panel').forEach(p=>p.style.display='none'); 
                     
-                    // Detach gizmo when changing modes
-                    transformControl.detach();
-                    
-                    if(m!=='walk'){ 
-                        controls.unlock(); 
-                        document.getElementById('panel-'+m).style.display='block'; 
-                        document.getElementById('crosshair').style.opacity=0; 
-                    } else { 
-                        controls.lock(); 
-                        document.getElementById('crosshair').style.opacity=1; 
-                    } 
+                    // Mostrar panel correspondiente
+                    const panel = document.getElementById('panel-'+m);
+                    if(panel) panel.style.display='block';
+
+                    // Visibilidad de handles
+                    arts.forEach(a => {
+                        a.children.forEach(c => {
+                            if(c.userData.isResizeHandle) c.visible = (m === 'resize');
+                        });
+                    });
+
+                    if(m!=='walk'){ controls.unlock(); document.getElementById('crosshair').style.opacity=0; } else { controls.lock(); document.getElementById('crosshair').style.opacity=1; } 
                 } 
             });
             const pg=document.getElementById('paint-grid');
@@ -478,46 +468,90 @@
             return new Blob([ab], {type: mimeString});
         }
 
+        // AGREGADO: Guardar Escala
         function exportScene() { 
-            const rd=[]; roomGrid.forEach((v,k)=>{ const [x,z]=k.split(',').map(Number), t={}; for(const d in v.walls) if(v.walls[d].userData.textureID!=='wall_default') t[d]=v.walls[d].userData.textureID; rd.push({x,z,textures:t}); }); 
+            const rd=[]; 
+            roomGrid.forEach((v,k)=>{ 
+                const [x,z]=k.split(',').map(Number), t={}; 
+                for(const d in v.walls) if(v.walls[d].userData.textureID!=='wall_default') t[d]=v.walls[d].userData.textureID; 
+                rd.push({x,z,textures:t}); 
+            }); 
             const ad=arts.map(m=>({
                 pos:m.position.toArray(),
                 rot:m.quaternion.toArray(),
-                scale: m.scale.toArray(), // SAVE SCALE
                 type:m.userData.type,
                 ratio:m.userData.ratio,
-                content:m.userData.content
+                content:m.userData.content,
+                scale: m.scale.x // Guardamos la escala actual
             })); 
             return {rooms:rd,artData:ad}; 
         }
 
         function onHover(e) { 
             if(controls.isLocked) return; 
+            
+            // LOGICA DE ARRASTRE PARA RESIZE
+            if(isDrag && state.mode === 'resize' && state.draggingHandle) {
+                const m=new THREE.Vector2((e.clientX/window.innerWidth)*2-1,-(e.clientY/window.innerHeight)*2+1);
+                raycaster.setFromCamera(m,camera);
+                
+                // Creamos un plano imaginario alineado con la pared para proyectar el mouse
+                const plane = new THREE.Plane();
+                const normal = new THREE.Vector3(0,0,1).applyQuaternion(state.draggingHandle.quaternion);
+                plane.setFromNormalAndCoplanarPoint(normal, state.draggingHandle.position);
+                
+                const target = new THREE.Vector3();
+                raycaster.ray.intersectPlane(plane, target);
+                
+                if(target) {
+                    const currentDist = target.distanceTo(state.draggingHandle.position);
+                    // Factor de escala simple basado en movimiento
+                    // Comparamos distancia al centro vs distancia original al centro
+                    // Centro del mesh
+                    const center = state.draggingHandle.position.clone();
+                    // Simplemente usaremos la distancia desde el centro del objeto al punto del mouse
+                    const newDist = target.distanceTo(center);
+                    
+                    // Ajuste de sensibilidad
+                    // Si el mouse está más lejos que el punto inicial, crece.
+                    
+                    // Opción simple: Escala = Distancia / Constante
+                    // Mejor opción: Escala = EscalaInicial * (DistanciaActual / DistanciaInicial)
+                    // Nota: initialDist se calculó en mousedown
+                    if(state.initialDist > 0.1) {
+                         let newScale = state.initialScale * (newDist / state.initialDist);
+                         // Limites
+                         if(newScale < 0.2) newScale = 0.2;
+                         if(newScale > 5) newScale = 5;
+                         
+                         state.draggingHandle.scale.set(newScale, newScale, 1);
+                    }
+                }
+                return;
+            }
 
-            // FIX 2: Check if hovering Gizmo handles to prevent camera slip
-            const hoveringGizmo = transformControl.axis !== null;
-
-            if(isDrag && !state.isDraggingGizmo && !hoveringGizmo){ 
+            if(isDrag){ 
                 camera.rotation.y-=(e.clientX-lastM.x)*0.002; 
                 camera.rotation.x=Math.max(-1.5,Math.min(1.5,camera.rotation.x-(e.clientY-lastM.y)*0.002)); 
                 lastM={x:e.clientX,y:e.clientY}; 
                 return; 
             } 
-            
-            // Si estamos usando el gizmo, no hacer raycasting normal
-            if(state.isDraggingGizmo) return;
-
-            const m=new THREE.Vector2((e.clientX/window.innerWidth)*2-1,-(e.clientY/window.innerHeight)*2+1); raycaster.setFromCamera(m,camera); walls.forEach(w=>w.material.emissive?w.material.emissive.setHex(0):null); document.getElementById('cursor-label').style.opacity=0; 
+            const m=new THREE.Vector2((e.clientX/window.innerWidth)*2-1,-(e.clientY/window.innerHeight)*2+1); 
+            raycaster.setFromCamera(m,camera); 
+            walls.forEach(w=>w.material.emissive?w.material.emissive.setHex(0):null); 
+            document.getElementById('cursor-label').style.opacity=0; 
             
             if(state.mode==='decorate'){ 
                 if(state.subMode==='delete'){ 
                     const h=raycaster.intersectObjects(arts); 
                     if(h.length) setLabel("Borrar"); 
-                } 
-                else if(state.placement.active&&state.placement.texture){ 
+                } else if(state.placement.active&&state.placement.texture){ 
                     const h=raycaster.intersectObjects(walls); 
                     if(h.length){ 
-                        if(!state.placement.ghost){ state.placement.ghost=new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({transparent:true,opacity:0.5,side:2})); scene.add(state.placement.ghost); } 
+                        if(!state.placement.ghost){ 
+                            state.placement.ghost=new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({transparent:true,opacity:0.5,side:2})); 
+                            scene.add(state.placement.ghost); 
+                        } 
                         const g=state.placement.ghost; g.visible=true; g.material.map=state.placement.texture; g.geometry=new THREE.PlaneGeometry(3,3/state.placement.ratio); 
                         const n=h[0].face.normal.clone().transformDirection(h[0].object.matrixWorld).normalize(); 
                         g.position.copy(h[0].point).add(n.clone().multiplyScalar(0.1)); 
@@ -526,67 +560,69 @@
                 } 
             } else if(state.mode==='paint'||state.mode==='build'){ 
                 const h=raycaster.intersectObjects(walls); 
-                if(h.length){ h[0].object.material.emissive.setHex(state.mode==='paint'?0x00ff00:0xffaa00); setLabel(state.mode==='paint'?"Pintar":"Expandir"); } 
-            } 
+                if(h.length){ 
+                    h[0].object.material.emissive.setHex(state.mode==='paint'?0x00ff00:0xffaa00); 
+                    setLabel(state.mode==='paint'?"Pintar":"Expandir"); 
+                } 
+            } else if(state.mode === 'resize') {
+                // Highlight handles
+                let handles = [];
+                arts.forEach(a => a.children.forEach(c => { if(c.userData.isResizeHandle) handles.push(c); }));
+                const h = raycaster.intersectObjects(handles);
+                if(h.length) {
+                    setLabel("Arrastrar");
+                    h[0].object.material.color.setHex(0xffffff); // Highlight
+                } else {
+                    handles.forEach(h => h.material.color.setHex(0x3b82f6)); // Reset
+                }
+            }
         }
-
         function onClick(e) { 
             const m=new THREE.Vector2((e.clientX/window.innerWidth)*2-1,-(e.clientY/window.innerHeight)*2+1); 
             raycaster.setFromCamera(m,camera); 
-            
             if(state.mode==='decorate'){ 
-                // 1. Check for art selection (for resize)
-                if(state.subMode !== 'delete' && !state.placement.active) {
-                    // FIX: Recursive search to hit children (frames)
-                    const h = raycaster.intersectObjects(arts, true);
-                    if(h.length > 0) {
-                        // Find the root object that is in the 'arts' array
-                        let target = h[0].object;
-                        while(target.parent && !arts.includes(target)) {
-                            target = target.parent;
-                        }
-                        // If we found a valid parent in 'arts' (or 'arts' includes the hit object directly)
-                        if(arts.includes(target)) {
-                             transformControl.attach(target);
-                             return; // Stop further processing if we selected an object
-                        }
-                    } else {
-                        // If clicked empty space/wall, detach unless we are placing
-                        transformControl.detach();
-                    }
-                }
-
                 if(state.subMode==='delete'){ 
-                    const h=raycaster.intersectObjects(arts, true); 
+                    const h=raycaster.intersectObjects(arts); 
                     if(h.length){ 
-                        let target = h[0].object;
-                        while(target.parent && !arts.includes(target)) target = target.parent;
-                        
-                        if(arts.includes(target)){
-                            transformControl.detach(); // Detach if deleting
-                            scene.remove(target); 
-                            arts=arts.filter(x=>x!==target); 
-                        }
+                        scene.remove(h[0].object); 
+                        arts=arts.filter(x=>x!==h[0].object); 
                     } 
                 } else if(state.placement.active&&state.placement.ghost&&state.placement.ghost.visible){ 
-                    const g=state.placement.ghost, ms=g.clone(); ms.material=g.material.clone(); ms.material.opacity=1; ms.material.transparent=true; ms.userData={type:state.placement.type,ratio:state.placement.ratio,content:state.placement.contentData}; 
-                    if(state.placement.type==='image'){ const f=new THREE.Mesh(new THREE.BoxGeometry(ms.geometry.parameters.width+0.2,ms.geometry.parameters.height+0.2,0.05), new THREE.MeshStandardMaterial({color:0x111})); f.position.z=-0.03; ms.add(f); } 
-                    scene.add(ms); arts.push(ms); 
+                    const g=state.placement.ghost, ms=g.clone(); 
+                    ms.material=g.material.clone(); 
+                    ms.material.opacity=1; 
+                    ms.material.transparent=true; 
+                    ms.userData={type:state.placement.type,ratio:state.placement.ratio,content:state.placement.contentData}; 
+                    if(state.placement.type==='image'){ 
+                        const f=new THREE.Mesh(new THREE.BoxGeometry(ms.geometry.parameters.width+0.2,ms.geometry.parameters.height+0.2,0.05), new THREE.MeshStandardMaterial({color:0x111})); 
+                        f.position.z=-0.03; 
+                        ms.add(f); 
+                    } 
                     
-                    // FIX 1: Stop placement after one click (FORCE CLEANUP)
-                    state.placement.active = false;
-                    scene.remove(state.placement.ghost);
-                    state.placement.ghost = null; // Destroy ghost ref
-                    
-                    // Auto-attach transform to the new object so you can resize immediately
-                    transformControl.attach(ms);
+                    // AÑADIR HANDLE AL NUEVO OBJETO
+                    const handleGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+                    const handleMat = new THREE.MeshBasicMaterial({color: 0x3b82f6});
+                    const handle = new THREE.Mesh(handleGeo, handleMat);
+                    handle.position.set(ms.geometry.parameters.width/2, -ms.geometry.parameters.height/2, 0.1); 
+                    handle.userData = { isResizeHandle: true, parentMesh: ms };
+                    handle.visible = false;
+                    ms.add(handle);
+
+                    scene.add(ms); 
+                    arts.push(ms); 
                 } 
             } else if(state.mode==='paint'){ 
                 const h=raycaster.intersectObjects(walls); 
-                if(h.length){ h[0].object.material=mats[state.paintTexture].clone(); h[0].object.userData.textureID=state.paintTexture; } 
+                if(h.length){ 
+                    h[0].object.material=mats[state.paintTexture].clone(); 
+                    h[0].object.userData.textureID=state.paintTexture; 
+                } 
             } else if(state.mode==='build'){ 
                 const h=raycaster.intersectObjects(walls); 
-                if(h.length){ const u=h[0].object.userData; createRoom(u.gx+u.dx, u.gz+u.dz); } 
+                if(h.length){ 
+                    const u=h[0].object.userData; 
+                    createRoom(u.gx+u.dx, u.gz+u.dz); 
+                } 
             } 
         }
         
