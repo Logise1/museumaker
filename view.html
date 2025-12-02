@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MuseuMaker - Visita</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Inter', sans-serif; color: white; }
+        #loading-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #050505; display: flex; justify-content: center; align-items: center; z-index: 100; flex-direction: column; }
+        .loader-box { background: rgba(20,20,20,0.8); backdrop-filter: blur(10px); padding: 40px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1); text-align: center; }
+        h1 span { color: #3b82f6; }
+        .spinner { width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.1); border-top: 3px solid #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin: 20px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #start-btn { display: none; margin-top: 20px; padding: 12px 30px; background: #3b82f6; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; }
+        #instructions { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); background: rgba(20,20,20,0.6); backdrop-filter: blur(10px); padding: 10px 20px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); pointer-events: none; color: #aaa; }
+    </style>
+    <script type="importmap">
+        { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/", "firebase/app": "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js", "firebase/firestore": "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js" } }
+    </script>
+</head>
+<body>
+    <div id="loading-screen">
+        <div class="loader-box"><h1>🏛️ Museu<span>Maker</span></h1><p style="color:#888" id="status-txt">Cargando...</p><div class="spinner" id="spin"></div><button id="start-btn">Entrar</button></div>
+    </div>
+    <div id="instructions">Mover: <b>WASD</b> • Mirar: <b>Ratón</b> • Salir: <b>ESC</b></div>
+    <script type="module">
+        import * as THREE from 'three';
+        import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+        import { initializeApp } from 'firebase/app';
+        import { getFirestore, doc, getDoc } from 'firebase/firestore';
+
+        const firebaseConfig = { apiKey: "AIzaSyBLpiDOy69AWI7oHHbeXArkT1UXvIMGNZU", authDomain: "museumaker-79294.firebaseapp.com", projectId: "museumaker-79294", storageBucket: "museumaker-79294.firebasestorage.app", messagingSenderId: "466260653400", appId: "1:466260653400:web:b03257442d6f6fa16da12d", measurementId: "G-29ERNWT9N3" };
+        const app = initializeApp(firebaseConfig); const db = getFirestore(app);
+        const ASSET_BASE = 'https://logise1.github.io/museumaker/assets/';
+        const ROOM_SIZE = 20; const WALL_HEIGHT = 7;
+        let camera, scene, renderer, controls, clock; const keyState = {};
+        
+        // Collision list
+        let collidables = [];
+        const raycaster = new THREE.Raycaster();
+
+        function loadTex(n, r=1) { const t = new THREE.TextureLoader().load(ASSET_BASE + n); t.colorSpace='srgb'; t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(r,r); return t; }
+        const mats = {
+            floor: new THREE.MeshStandardMaterial({ map: loadTex('wood.jpg', 2), color: 0x8d6e63, roughness: 0.8, side: 2 }),
+            wall_default: new THREE.MeshStandardMaterial({ map: loadTex('marble.jpg'), side: 2 }),
+            wall_red: new THREE.MeshStandardMaterial({ map: loadTex('darkred.png'), side: 2 }),
+            wall_blue: new THREE.MeshStandardMaterial({ map: loadTex('blue.png'), side: 2 }),
+            wall_dark: new THREE.MeshStandardMaterial({ color: 0x222, side: 2 }),
+            wood: new THREE.MeshStandardMaterial({ map: loadTex('darkwood.jpg') })
+        };
+
+        async function loadMuseum() {
+            const params = new URLSearchParams(window.location.search); const id = params.get('id');
+            if(!id) { document.getElementById('status-txt').innerText="ID inválido"; return; }
+            try {
+                const snap = await getDoc(doc(db, "museums", id));
+                if(snap.exists()) {
+                    const data = JSON.parse(snap.data().data); document.title = (snap.data().name||"Galería")+" - MuseuMaker";
+                    init3D(data);
+                    document.getElementById('status-txt').innerText="Listo"; document.getElementById('spin').style.display='none'; document.getElementById('start-btn').style.display='inline-block';
+                } else document.getElementById('status-txt').innerText="No encontrado";
+            } catch(e) { document.getElementById('status-txt').innerText="Error"; }
+        }
+
+        function init3D(data) {
+            scene = new THREE.Scene(); 
+            scene.background = new THREE.Color(0x87ceeb); // CIELO CLARO
+            scene.fog = new THREE.Fog(0x87ceeb, 5, 50);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000); camera.position.set(0, 3.0, 0); camera.rotation.order = 'YXZ';
+            scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+            const dl = new THREE.DirectionalLight(0xffffff, 0.5); dl.position.set(10, 20, 10); scene.add(dl);
+            const pl = new THREE.PointLight(0xffaa00, 0.5, 20); pl.position.set(0,2,0); camera.add(pl); scene.add(camera);
+
+            const roomSet = new Set(); data.rooms.forEach(r => roomSet.add(`${r.x},${r.z}`));
+            data.rooms.forEach(r => {
+                const group = new THREE.Group(); group.position.set(r.x*ROOM_SIZE, 0, r.z*ROOM_SIZE);
+                const f = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_SIZE, ROOM_SIZE), mats.floor); f.rotation.x = -Math.PI/2; group.add(f);
+                const c = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_SIZE, ROOM_SIZE), new THREE.MeshBasicMaterial({color:0x222})); c.position.y = WALL_HEIGHT; c.rotation.x = Math.PI/2; group.add(c);
+                const dirs = [{id:'N',x:0,z:-1,rot:0},{id:'S',x:0,z:1,rot:Math.PI},{id:'E',x:1,z:0,rot:-Math.PI/2},{id:'W',x:-1,z:0,rot:Math.PI/2}];
+                dirs.forEach(d => {
+                    const nKey = `${r.x + d.x},${r.z + d.z}`;
+                    if(roomSet.has(nKey)) createDoorFrame(group, d);
+                    else {
+                        let mat = mats.wall_default;
+                        if(r.textures && r.textures[d.id] && mats[r.textures[d.id]]) mat = mats[r.textures[d.id]];
+                        const w = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_SIZE, WALL_HEIGHT), mat);
+                        w.position.set(d.x*ROOM_SIZE/2, WALL_HEIGHT/2, d.z*ROOM_SIZE/2); w.rotation.y = d.rot; group.add(w);
+                        collidables.push(w);
+                    }
+                });
+                scene.add(group);
+            });
+
+            data.artData.forEach(a => {
+                let tex;
+                if(a.type === 'image') { const img = new Image(); img.crossOrigin="Anonymous"; img.src = a.content; tex = new THREE.Texture(img); img.onload = () => { tex.needsUpdate=true; tex.colorSpace='srgb'; }; }
+                else {
+                    const c = document.createElement('canvas'); c.width=512; c.height=128; const x = c.getContext('2d');
+                    x.fillStyle='#111'; x.fillRect(0,0,512,128); x.strokeStyle='#d4af37'; x.lineWidth=5; x.strokeRect(2,2,508,124);
+                    x.font='bold 40px Arial'; x.fillStyle='#d4af37'; x.textAlign='center'; x.textBaseline='middle'; x.fillText(a.content, 256, 64);
+                    tex = new THREE.CanvasTexture(c);
+                }
+                const w = 3; const h = w / a.ratio;
+                const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w,h), new THREE.MeshBasicMaterial({map:tex, transparent:true, side:2}));
+                mesh.position.fromArray(a.pos); mesh.quaternion.fromArray(a.rot);
+                if(a.type === 'image') { const f = new THREE.Mesh(new THREE.BoxGeometry(w+0.2, h+0.2, 0.05), new THREE.MeshStandardMaterial({color:0x111})); f.position.z = -0.03; mesh.add(f); }
+                scene.add(mesh);
+            });
+
+            renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setSize(window.innerWidth, window.innerHeight); document.body.appendChild(renderer.domElement);
+            controls = new PointerLockControls(camera, document.body); clock = new THREE.Clock();
+            window.addEventListener('resize', () => { camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+            document.addEventListener('keydown', e => keyState[e.code] = true); document.addEventListener('keyup', e => keyState[e.code] = false);
+            document.getElementById('start-btn').onclick = () => { document.getElementById('loading-screen').style.display='none'; controls.lock(); };
+            animate();
+        }
+
+        function createDoorFrame(group, d) {
+            const fr = new THREE.Group(); fr.position.set(d.x*ROOM_SIZE/2, 0, d.z*ROOM_SIZE/2); fr.rotation.y = d.rot;
+            const wp = (ROOM_SIZE-4)/2;
+            // USA CAJAS (BOX) PARA TENER SOLIDEZ
+            const p1 = new THREE.Mesh(new THREE.BoxGeometry(wp, WALL_HEIGHT, 0.5), mats.wood); p1.position.set(-ROOM_SIZE/2+wp/2, WALL_HEIGHT/2, 0);
+            const p2 = p1.clone(); p2.position.set(ROOM_SIZE/2-wp/2, WALL_HEIGHT/2, 0);
+            const lint = new THREE.Mesh(new THREE.BoxGeometry(4, WALL_HEIGHT-4.5, 0.5), mats.wood); lint.position.set(0, WALL_HEIGHT-(WALL_HEIGHT-4.5)/2, 0);
+            fr.add(p1,p2,lint); group.add(fr);
+            // Añadir a colisiones
+            collidables.push(p1, p2, lint);
+        }
+
+        function checkCollision(pos) {
+            const p = pos.clone(); p.y=1.5; 
+            const dirs = [new THREE.Vector3(1,0,0), new THREE.Vector3(-1,0,0), new THREE.Vector3(0,0,1), new THREE.Vector3(0,0,-1)];
+            for(let d of dirs) {
+                raycaster.set(p, d);
+                const hits = raycaster.intersectObjects(collidables, true);
+                if(hits.length > 0 && hits[0].distance < 1.5) return true;
+            }
+            return false;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate); 
+            const dt=clock.getDelta(), s=12; // VELOCIDAD REDUCIDA
+            
+            if(camera.position.y < 3.0) camera.position.y = 3.0; // Force Height
+
+            // MOVEMENT WITH COLLISION
+            const oldPos = camera.position.clone();
+            
+            if(keyState['KeyW']) controls.moveForward(s*dt); 
+            if(keyState['KeyS']) controls.moveForward(-s*dt); 
+            if(keyState['KeyA']) controls.moveRight(-s*dt); 
+            if(keyState['KeyD']) controls.moveRight(s*dt);
+
+            if(checkCollision(camera.position)) camera.position.copy(oldPos);
+
+            renderer.render(scene, camera);
+        }
+        loadMuseum();
+    </script>
+</body>
+</html>

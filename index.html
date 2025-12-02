@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MuseuMaker Studio</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        /* --- ESTILO GLASSMORPHISM --- */
+        :root {
+            --bg-dark: #050505;
+            --accent: #3b82f6; --accent-hover: #2563eb;
+            --text-main: #ffffff; --text-muted: #9ca3af;
+            --danger: #ef4444;
+            --glass: rgba(20, 20, 20, 0.65);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --radius: 16px;
+        }
+        * { box-sizing: border-box; outline: none; }
+        body { margin: 0; overflow: hidden; font-family: 'Inter', sans-serif; background: var(--bg-dark); color: var(--text-main); }
+
+        /* LAYERS */
+        .layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; flex-direction: column; z-index: 10; background: var(--bg-dark); }
+        .layer.active { display: flex; }
+        #editor-layer { background: transparent; pointer-events: none; }
+        .interactive { pointer-events: auto; }
+
+        /* COMPONENTS */
+        h1, h2, h3 { margin: 0 0 15px 0; font-weight: 600; color: white; }
+        h1 span { color: var(--accent); }
+
+        .glass-panel { background: var(--glass); backdrop-filter: blur(20px); border: 1px solid var(--glass-border); border-radius: var(--radius); padding: 30px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+        
+        input { width: 100%; padding: 12px 15px; margin-bottom: 15px; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); border-radius: 8px; color: white; transition: 0.3s; }
+        input:focus { border-color: var(--accent); background: rgba(255,255,255,0.1); }
+
+        button { width: 100%; padding: 12px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.3s; background: var(--accent); color: white; }
+        button:hover { background: var(--accent-hover); transform: translateY(-2px); }
+        button.secondary { background: rgba(255,255,255,0.1); color: var(--text-muted); }
+        button.secondary:hover { background: rgba(255,255,255,0.2); color: white; }
+        button.danger { background: rgba(239, 68, 68, 0.2); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); }
+
+        /* AUTH & DASHBOARD */
+        .center-container { display: flex; width: 100%; height: 100%; justify-content: center; align-items: center; }
+        .auth-box { width: 350px; text-align: center; }
+        #dashboard-content { max-width: 1200px; width: 100%; margin: 0 auto; padding: 40px; overflow-y: auto; }
+        .header-flex { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        .museum-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+        .museum-card { background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 12px; padding: 20px; transition: 0.3s; display: flex; flex-direction: column; height: 200px; position: relative; overflow: hidden; }
+        .museum-card:hover { transform: translateY(-5px); border-color: var(--accent); background: rgba(255,255,255,0.06); }
+        .card-actions { margin-top: auto; display: flex; gap: 10px; }
+        .fab { position: fixed; bottom: 40px; right: 40px; width: 60px; height: 60px; border-radius: 50%; font-size: 2rem; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 30px rgba(59, 130, 246, 0.4); }
+
+        /* EDITOR UI */
+        #top-bar { display: flex; justify-content: space-between; align-items: center; padding: 20px 30px; background: linear-gradient(180deg, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%); pointer-events: none; }
+        #top-bar > * { pointer-events: auto; }
+        .top-group { display: flex; gap: 10px; align-items: center; }
+        
+        .side-panel { position: absolute; right: 30px; top: 100px; width: 300px; display: none; animation: slideLeft 0.4s ease; }
+        @keyframes slideLeft { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }
+        
+        .dock-container { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; gap: 15px; pointer-events: auto; }
+        .dock-btn { background: var(--glass); backdrop-filter: blur(10px); border: 1px solid var(--glass-border); color: var(--text-muted); padding: 12px 25px; border-radius: 20px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 90px; transition: 0.3s; }
+        .dock-btn.active { background: var(--accent); border-color: var(--accent); color: white; box-shadow: 0 0 20px rgba(59, 130, 246, 0.4); }
+        
+        .preview-box { width: 100%; height: 140px; background: #000; border-radius: 8px; margin-bottom: 15px; border: 1px dashed #444; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        .preview-box img { max-width: 100%; max-height: 100%; object-fit: contain; }
+        .color-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 15px; }
+        .color-swatch { aspect-ratio: 1; border-radius: 8px; cursor: pointer; border: 2px solid transparent; }
+        .color-swatch.selected { border-color: white; box-shadow: 0 0 15px rgba(255,255,255,0.4); }
+        
+        #crosshair { position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; background: white; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; opacity: 0; transition: 0.2s; }
+        #cursor-label { position: absolute; top: 52%; left: 50%; transform: translateX(-50%); font-size: 0.8rem; color: rgba(255,255,255,0.9); text-shadow: 0 2px 4px black; pointer-events: none; opacity: 0; }
+        
+        #modal-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.8); z-index: 100; display: none; align-items: center; justify-content: center; }
+        .link-box { background: #111; padding: 15px; border-radius: 8px; color: #10b981; font-family: monospace; margin: 20px 0; word-break: break-all; border: 1px dashed #333; }
+        
+        /* FILE INPUT HIDDEN */
+        #expo-file-input { display: none; }
+    </style>
+    <script type="importmap">
+        { "imports": { 
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", 
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/", 
+            "firebase/app": "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js", 
+            "firebase/auth": "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js", 
+            "firebase/firestore": "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js" 
+        } }
+    </script>
+</head>
+<body>
+    <!-- 1. AUTH -->
+    <div id="auth-layer" class="layer active"><div class="center-container"><div class="glass-panel auth-box"><h1>🏛️ Museu<span>Maker</span></h1><p style="color:var(--text-muted); margin-bottom:20px;">Estudio de Arte 3D</p><input type="email" id="email" placeholder="Email"><input type="password" id="pass" placeholder="Contraseña"><button id="btn-login">Entrar</button><button id="btn-signup" class="secondary" style="margin-top:10px">Registrarse</button><p id="auth-error" style="color:var(--danger); font-size:0.85rem; margin-top:15px;"></p></div></div></div>
+    
+    <!-- 2. DASHBOARD -->
+    <div id="dashboard-layer" class="layer"><div id="dashboard-content"><div class="header-flex"><div><h1>Mis Museos</h1><p style="color:var(--text-muted)" id="user-welcome">...</p></div><button id="btn-logout" class="secondary" style="width:auto;">Salir</button></div><div class="museum-grid" id="museum-list"></div></div><button class="fab" onclick="showNewMuseumModal()">+</button></div>
+    <div id="new-museum-modal" class="layer" style="background:rgba(0,0,0,0.8); z-index:50; align-items:center; justify-content:center;"><div class="glass-panel" style="width:400px;"><h3>Nuevo Proyecto</h3><input type="text" id="new-museum-name" placeholder="Nombre"><div style="display:flex; gap:10px; margin-top:20px;"><button class="secondary" onclick="document.getElementById('new-museum-modal').classList.remove('active')">Cancelar</button><button id="btn-create-confirm">Crear</button></div></div></div>
+
+    <!-- 3. EDITOR -->
+    <div id="editor-layer" class="layer">
+        <div id="canvas-wrapper" style="position:absolute; top:0; left:0; width:100%; height:100%; z-index:-1;"></div>
+        
+        <!-- TOP BAR -->
+        <div id="top-bar">
+            <div class="top-group">
+                <button class="secondary" id="btn-back-dash" style="width:auto;">← Salir</button>
+                <div style="margin-left:15px;">
+                    <h3 id="editor-title" style="margin:0; font-size:1rem;">...</h3>
+                    <span style="font-size:0.7rem; color:var(--text-muted);" id="save-status">Guardado</span>
+                </div>
+            </div>
+            
+            <div class="top-group">
+                <button class="secondary" id="btn-import-expo" style="width:auto; margin-right:5px;">📂 Importar .expo</button>
+                <button class="secondary" id="btn-export-expo" style="width:auto; margin-right:5px;">💾 Exportar .expo</button>
+                <button id="btn-save" style="width:auto; background:#10b981;">☁️ Publicar</button>
+                <input type="file" id="expo-file-input" accept=".expo">
+            </div>
+        </div>
+        
+        <!-- DECORATE PANEL -->
+        <div id="panel-decorate" class="glass-panel side-panel interactive">
+            <h3>Decoración</h3>
+            <p style="font-size:0.85rem; color:#aaa; margin-bottom:15px;">
+                Sube imágenes o crea texto. Haz clic para colocar.
+                <br><b>¡Nuevo!</b> Haz clic en un cuadro colocado para cambiar su tamaño con los tiradores.
+            </p>
+            <div style="display:flex; gap:10px; margin-bottom:20px;"><button id="btn-type-img" class="secondary">Imagen</button><button id="btn-type-txt" class="secondary">Texto</button></div>
+            <div id="opts-img">
+                <div class="preview-box"><span id="img-placeholder" style="color:#444; font-size:0.8rem;">Vista Previa</span><img id="img-preview" style="display:none"></div>
+                <label for="file-in" class="secondary" style="display:block; padding:10px; text-align:center; border-radius:8px; cursor:pointer; background:rgba(255,255,255,0.1);">📂 Subir</label>
+                <input type="file" id="file-in" accept="image/*" style="display:none">
+            </div>
+            <div id="opts-txt" style="display:none;"><input type="text" id="txt-in" placeholder="Texto..."><button id="btn-gen-txt">Generar</button></div>
+            <div style="margin-top:20px; padding-top:15px; border-top:1px solid var(--glass-border);">
+                <button id="btn-del-mode" class="danger">🗑️ Borrar Objeto</button>
+            </div>
+        </div>
+        
+        <!-- MATERIAL PANEL -->
+        <div id="panel-paint" class="glass-panel side-panel interactive"><h3>Materiales</h3><p style="font-size:0.85rem; color:#aaa;">Selecciona un acabado y haz clic en una pared o suelo para cambiar su apariencia instantáneamente.</p><div class="color-grid" id="paint-grid"></div></div>
+        
+        <!-- BUILD PANEL -->
+        <div id="panel-build" class="glass-panel side-panel interactive">
+            <h3>Arquitectura</h3>
+            <p style="font-size:0.9rem; line-height:1.6; color:#ccc;">
+                Expande tu museo. Al hacer clic en una pared, se creará una nueva sala conectada.
+            </p>
+        </div>
+        
+        <div class="dock-container"><div class="dock-btn" data-mode="walk" id="dock-walk"><i>🚶</i>Explorar</div><div class="dock-btn active" data-mode="decorate" id="dock-decorate"><i>🖼️</i>Decorar</div><div class="dock-btn" data-mode="paint" id="dock-paint"><i>🎨</i>Pintar</div><div class="dock-btn" data-mode="build" id="dock-build"><i>🧱</i>Construir</div></div>
+        <div id="crosshair"></div><div id="cursor-label"></div>
+    </div>
+
+    <div id="modal-overlay" class="interactive"><div class="glass-panel" style="width:400px; text-align:center;"><h2 style="color:#10b981;">¡Publicado!</h2><p>Enlace de visita:</p><div id="share-link" class="link-box">...</div><button onclick="document.getElementById('modal-overlay').style.display='none'">Cerrar</button><button class="secondary" onclick="window.open(document.getElementById('share-link').innerText, '_blank')" style="margin-top:10px">Abrir</button></div></div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+        import { TransformControls } from 'three/addons/controls/TransformControls.js';
+        import { initializeApp } from 'firebase/app';
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
+        import { getFirestore, collection, addDoc, getDocs, query, where, updateDoc, doc, deleteDoc, orderBy } from 'firebase/firestore';
+
+        const firebaseConfig = { apiKey: "AIzaSyBLpiDOy69AWI7oHHbeXArkT1UXvIMGNZU", authDomain: "museumaker-79294.firebaseapp.com", projectId: "museumaker-79294", storageBucket: "museumaker-79294.firebasestorage.app", messagingSenderId: "466260653400", appId: "1:466260653400:web:b03257442d6f6fa16da12d", measurementId: "G-29ERNWT9N3" };
+        const app = initializeApp(firebaseConfig); const auth = getAuth(app); const db = getFirestore(app);
+
+        let currentUser=null, currentMuseumId=null;
+        let camera, scene, renderer, controls, transformControl, clock, raycaster;
+        const ROOM_SIZE=20, WALL_HEIGHT=7;
+        let walls=[], collidables=[], arts=[], roomGrid=new Map();
+        const keyState={};
+        const state = { 
+            mode:'decorate', 
+            subMode:'image', 
+            paintTexture:'wall_red', 
+            placement:{active:false, texture:null, ratio:1, type:'image', ghost:null, contentData:null}, 
+            isDragging:false,
+            isDraggingGizmo: false, 
+            lastMouse:{x:0,y:0} 
+        };
+        const ASSET_BASE = 'https://logise1.github.io/museumaker/assets/';
+
+        function loadTex(n, r=1) { const t=new THREE.TextureLoader().load(ASSET_BASE+n); t.colorSpace='srgb'; t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(r,r); return t; }
+        const mats = {
+            floor: new THREE.MeshStandardMaterial({ map: loadTex('wood.jpg', 2), color: 0x8d6e63, roughness: 0.8, side: THREE.DoubleSide }),
+            wall_default: new THREE.MeshStandardMaterial({ map: loadTex('marble.jpg'), side: 2 }),
+            wall_red: new THREE.MeshStandardMaterial({ map: loadTex('darkred.png'), side: 2 }),
+            wall_blue: new THREE.MeshStandardMaterial({ map: loadTex('blue.png'), side: 2 }),
+            wall_dark: new THREE.MeshStandardMaterial({ color: 0x222, side: 2 }),
+            wood: new THREE.MeshStandardMaterial({ map: loadTex('darkwood.jpg') })
+        };
+
+        onAuthStateChanged(auth, u => { currentUser=u; if(u) { document.getElementById('user-welcome').innerText="Hola, "+u.email; loadDashboard(); showLayer('dashboard-layer'); } else showLayer('auth-layer'); });
+        window.showNewMuseumModal = () => document.getElementById('new-museum-modal').classList.add('active');
+        document.getElementById('btn-login').onclick = () => doAuth('login');
+        document.getElementById('btn-signup').onclick = () => doAuth('signup');
+        document.getElementById('btn-logout').onclick = () => signOut(auth);
+        async function doAuth(t) { const e=document.getElementById('email').value, p=document.getElementById('pass').value; try{ if(t==='login') await signInWithEmailAndPassword(auth,e,p); else await createUserWithEmailAndPassword(auth,e,p); }catch(x){ document.getElementById('auth-error').innerText="Error: "+x.message; } }
+
+        async function loadDashboard() {
+            const l=document.getElementById('museum-list'); l.innerHTML='<p style="color:#666">Cargando...</p>';
+            const q=query(collection(db,"museums"), where("owner","==",currentUser.uid), orderBy("createdAt","desc"));
+            const s=await getDocs(q); l.innerHTML='';
+            if(s.empty) l.innerHTML='<div style="text-align:center; grid-column:1/-1; padding:40px; color:#666;">Sin proyectos. ¡Crea uno!</div>';
+            s.forEach(d=>{
+                const data=d.data(), div=document.createElement('div'); div.className='museum-card';
+                div.innerHTML=`<h3>${data.name||'Sin Título'}</h3><p>${data.createdAt.toDate().toLocaleDateString()}</p><div class="card-actions"><button class="btn-open">✏️ Editar</button><button class="btn-view secondary">👁️ Ver</button><button class="btn-del danger" style="flex:0;">🗑️</button></div>`;
+                div.querySelector('.btn-open').onclick=()=>loadEditor(d.id, data);
+                div.querySelector('.btn-view').onclick=()=>window.open(`view.html?id=${d.id}`, '_blank');
+                div.querySelector('.btn-del').onclick=async()=>{ if(confirm('¿Borrar?')) { await deleteDoc(d.ref); loadDashboard(); } };
+                l.appendChild(div);
+            });
+        }
+        document.getElementById('btn-create-confirm').onclick = async () => {
+            const n = document.getElementById('new-museum-name').value || "Galería"; document.getElementById('new-museum-modal').classList.remove('active');
+            const r = await addDoc(collection(db,"museums"), { owner:currentUser.uid, name:n, createdAt:new Date(), data:JSON.stringify({rooms:[{x:0,z:0,textures:{}}],artData:[]}) });
+            loadEditor(r.id, {name:n, data:JSON.stringify({rooms:[{x:0,z:0,textures:{}}],artData:[]})});
+        };
+        function loadEditor(id, data) { currentMuseumId=id; document.getElementById('editor-title').innerText=data.name; showLayer('editor-layer'); if(!renderer) initEngine(); else resetScene(); loadSceneData(JSON.parse(data.data)); }
+        document.getElementById('btn-back-dash').onclick = () => showLayer('dashboard-layer');
+        
+        // --- EXPORTAR / IMPORTAR .EXPO ---
+        document.getElementById('btn-export-expo').onclick = () => {
+            const data = exportScene();
+            const json = JSON.stringify(data);
+            const blob = new Blob([json], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = (document.getElementById('editor-title').innerText || 'museo') + '.expo';
+            a.click();
+            URL.revokeObjectURL(url);
+        };
+
+        document.getElementById('btn-import-expo').onclick = () => document.getElementById('expo-file-input').click();
+        
+        document.getElementById('expo-file-input').onchange = (e) => {
+            const file = e.target.files[0];
+            if(!file) return;
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                try {
+                    const data = JSON.parse(evt.target.result);
+                    resetScene();
+                    loadSceneData(data);
+                    alert('Museo importado con éxito');
+                } catch(err) {
+                    alert('Error al leer el archivo .expo');
+                    console.error(err);
+                }
+            };
+            reader.readAsText(file);
+            e.target.value = ''; // Reset input
+        };
+        // ----------------------------------
+
+        document.getElementById('btn-save').onclick = async () => {
+            const b=document.getElementById('btn-save'); b.innerText="Guardando...";
+            await updateDoc(doc(db,"museums",currentMuseumId), { data:JSON.stringify(exportScene()) });
+            b.innerText="☁️ Publicar"; document.getElementById('save-status').innerText="Guardado: "+new Date().toLocaleTimeString();
+            const link = `https://logise1.github.io/museumaker/view?id=${currentMuseumId}`;
+            document.getElementById('share-link').innerText=link;
+            document.getElementById('modal-overlay').style.display='flex';
+        };
+
+        function initEngine() {
+            scene=new THREE.Scene(); 
+            scene.background=new THREE.Color(0x87ceeb); // CIELO CLARO
+            scene.fog=new THREE.Fog(0x87ceeb, 5, 50);
+
+            camera=new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000); camera.rotation.order='YXZ';
+            renderer=new THREE.WebGLRenderer({antialias:true}); renderer.setSize(window.innerWidth,window.innerHeight); document.getElementById('canvas-wrapper').appendChild(renderer.domElement);
+            controls=new PointerLockControls(camera,document.body); clock=new THREE.Clock(); raycaster=new THREE.Raycaster();
+            
+            // TRANSFORM CONTROLS (NUEVO)
+            transformControl = new TransformControls(camera, renderer.domElement);
+            transformControl.addEventListener('dragging-changed', function (event) {
+                state.isDraggingGizmo = event.value;
+            });
+            transformControl.setMode('scale'); // Solo escalar por ahora
+            scene.add(transformControl);
+
+            // ILUMINACIÓN
+            scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+            const dl=new THREE.DirectionalLight(0xffffff, 0.5); dl.position.set(10,20,10); scene.add(dl);
+            const pl=new THREE.PointLight(0xffaa00, 0.5, 20); pl.position.set(0,2,0); camera.add(pl); scene.add(camera);
+            
+            setupInteraction(); animate();
+        }
+        function resetScene() {
+            transformControl.detach();
+            [...walls,...arts,...collidables].forEach(m=>scene.remove(m)); walls=[]; arts=[]; collidables=[]; roomGrid.clear();
+            scene.children.forEach(c=>{ if(c.userData.isRoomGroup) scene.remove(c); });
+            camera.position.set(0,3,0); camera.rotation.set(0,0,0);
+        }
+        function loadSceneData(d) {
+            const rs=new Set(); d.rooms.forEach(r=>rs.add(`${r.x},${r.z}`));
+            d.rooms.forEach(r=>createRoom(r.x,r.z,r.textures,rs));
+            d.artData.forEach(a=>{
+                let t; 
+                if(a.type==='image'){ 
+                    const i=new Image(); i.crossOrigin="Anonymous"; i.src=a.content; 
+                    t=new THREE.Texture(i); i.onload=()=>{t.needsUpdate=true;t.colorSpace='srgb'}; 
+                } else t=generateTextTex(a.content);
+                const w=3, h=w/a.ratio, m=new THREE.Mesh(new THREE.PlaneGeometry(w,h), new THREE.MeshBasicMaterial({map:t,transparent:true,side:2}));
+                m.position.fromArray(a.pos); m.quaternion.fromArray(a.rot); 
+                // LOAD SCALE IF EXISTS
+                if(a.scale) m.scale.fromArray(a.scale);
+                
+                m.userData={type:a.type,ratio:a.ratio,content:a.content};
+                if(a.type==='image'){ const f=new THREE.Mesh(new THREE.BoxGeometry(w+0.2,h+0.2,0.05), new THREE.MeshStandardMaterial({color:0x111})); f.position.z=-0.03; m.add(f); }
+                scene.add(m); arts.push(m);
+            });
+        }
+        function createRoom(gx, gz, tm={}, rs=null) {
+            const k=`${gx},${gz}`; if(roomGrid.has(k)) return;
+            const g=new THREE.Group(); g.userData.isRoomGroup=true; g.position.set(gx*ROOM_SIZE,0,gz*ROOM_SIZE);
+            const f=new THREE.Mesh(new THREE.PlaneGeometry(ROOM_SIZE,ROOM_SIZE), mats.floor); f.rotation.x=-Math.PI/2; g.add(f);
+            const c=new THREE.Mesh(new THREE.PlaneGeometry(ROOM_SIZE,ROOM_SIZE), new THREE.MeshBasicMaterial({color:0x222})); c.position.y=WALL_HEIGHT; c.rotation.x=Math.PI/2; g.add(c);
+            const dirs=[{id:'N',x:0,z:-1,rot:0},{id:'S',x:0,z:1,rot:Math.PI},{id:'E',x:1,z:0,rot:-Math.PI/2},{id:'W',x:-1,z:0,rot:Math.PI/2}];
+            const rw={};
+            dirs.forEach(d=>{
+                const nk=`${gx+d.x},${gz+d.z}`, hn=rs?rs.has(nk):roomGrid.has(nk);
+                if(hn) { if(!rs) removeWall(nk, getOpposite(d.id)); createDoorFrame(g,d); }
+                else {
+                    let m=mats.wall_default; if(tm[d.id] && mats[tm[d.id]]) m=mats[tm[d.id]];
+                    const w=new THREE.Mesh(new THREE.PlaneGeometry(ROOM_SIZE,WALL_HEIGHT), m.clone());
+                    w.position.set(d.x*ROOM_SIZE/2,WALL_HEIGHT/2,d.z*ROOM_SIZE/2); w.rotation.y=d.rot;
+                    w.userData={isWall:true,gx,gz,dx:d.x,dz:d.z,dir:d.id,textureID:tm[d.id]||'wall_default'};
+                    g.add(w); walls.push(w); collidables.push(w); rw[d.id]=w;
+                }
+            });
+            scene.add(g); roomGrid.set(k, {group:g, walls:rw});
+        }
+        
+        let isDrag=false, lastM={x:0,y:0}, startT=0;
+        function setupInteraction() {
+            window.addEventListener('keydown',e=>keyState[e.code]=true); window.addEventListener('keyup',e=>keyState[e.code]=false);
+            window.addEventListener('mousedown',e=>{ 
+                if(state.isDraggingGizmo) return; // Ignore drag if using gizmo
+                if(!e.target.closest('.interactive') && !controls.isLocked){ 
+                    isDrag=true; startT=performance.now(); lastM={x:e.clientX,y:e.clientY}; 
+                } 
+            });
+            window.addEventListener('mouseup',e=>{ 
+                if(!e.target.closest('.interactive')){ 
+                    isDrag=false; 
+                    if(performance.now()-startT<200 && !controls.isLocked && !state.isDraggingGizmo) onClick(e); 
+                } 
+            });
+            window.addEventListener('mousemove',onHover);
+            document.getElementById('btn-type-img').onclick=()=>{state.subMode='image';updateDecorUI()}; document.getElementById('btn-type-txt').onclick=()=>{state.subMode='text';updateDecorUI()}; document.getElementById('btn-del-mode').onclick=()=>{state.subMode='delete';state.placement.active=false};
+            
+            // UPLOAD SYSTEM
+            document.getElementById('file-in').onchange=async(e)=>{
+                if(!e.target.files[0])return;
+                const file = e.target.files[0];
+                const lbl = document.querySelector('label[for="file-in"]');
+                if(!lbl) return;
+                
+                const originalText = lbl.innerText;
+                lbl.innerText = "Procesando...";
+                
+                try {
+                    const compressedB64 = await compressImage(file);
+                    document.getElementById('img-preview').src=compressedB64; 
+                    document.getElementById('img-preview').style.display='block'; 
+                    document.getElementById('img-placeholder').style.display='none';
+                    
+                    const i=new Image(); i.src=compressedB64; 
+                    i.onload=()=>{ 
+                        const t=new THREE.Texture(i); t.needsUpdate=true; t.colorSpace='srgb'; 
+                        state.placement={active:true,texture:t,ratio:i.width/i.height,type:'image',contentData:compressedB64,ghost:state.placement.ghost}; 
+                    };
+
+                    lbl.innerText = "Subiendo...";
+                    const blob = dataURItoBlob(compressedB64);
+                    const formData = new FormData();
+                    formData.append('file', blob, "image.jpg");
+                    
+                    const res = await fetch('https://yyf.mubilop.com/api/upload', { method: 'POST', body: formData });
+                    if(!res.ok) throw new Error("Upload failed");
+                    
+                    const data = await res.json();
+                    const publicUrl = 'https://yyf.mubilop.com' + data.fileUrl;
+                    
+                    console.log("Upload success:", publicUrl);
+                    state.placement.contentData = publicUrl; 
+                    
+                } catch(err) {
+                    console.warn("Upload failed, using local base64:", err);
+                    alert("Aviso: Subida falló. Se usará modo local.");
+                } finally {
+                    lbl.innerText = originalText;
+                }
+            };
+            
+            document.getElementById('btn-gen-txt').onclick=()=>{ const t=document.getElementById('txt-in').value; if(t){ const tex=generateTextTex(t); state.placement={active:true,texture:tex,ratio:4,type:'text',contentData:t,ghost:state.placement.ghost}; } };
+            
+            ['walk','decorate','paint','build'].forEach(m=>{ 
+                document.getElementById('dock-'+m).onclick=(e)=>{ 
+                    state.mode=m; 
+                    document.querySelectorAll('.dock-btn').forEach(b=>b.classList.remove('active')); 
+                    e.currentTarget.classList.add('active'); 
+                    document.querySelectorAll('.side-panel').forEach(p=>p.style.display='none'); 
+                    
+                    // Detach gizmo when changing modes
+                    transformControl.detach();
+                    
+                    if(m!=='walk'){ 
+                        controls.unlock(); 
+                        document.getElementById('panel-'+m).style.display='block'; 
+                        document.getElementById('crosshair').style.opacity=0; 
+                    } else { 
+                        controls.lock(); 
+                        document.getElementById('crosshair').style.opacity=1; 
+                    } 
+                } 
+            });
+            const pg=document.getElementById('paint-grid');
+            Object.keys(mats).forEach(k=>{ if(k.startsWith('wall_')){ const d=document.createElement('div'); d.className='color-swatch'; d.style.background=(k==='wall_red'?'#800':k==='wall_blue'?'#008':k==='wall_dark'?'#222':'#eee'); d.onclick=()=>{ document.querySelectorAll('.color-swatch').forEach(s=>s.classList.remove('selected')); d.classList.add('selected'); state.paintTexture=k; }; pg.appendChild(d); } });
+        }
+        function updateDecorUI() { document.getElementById('opts-img').style.display=state.subMode==='image'?'block':'none'; document.getElementById('opts-txt').style.display=state.subMode==='text'?'block':'none'; }
+        function setLabel(t) { const l=document.getElementById('cursor-label'); l.innerText=t; l.style.opacity=1; }
+        function showLayer(id) { document.querySelectorAll('.layer').forEach(l=>l.classList.remove('active')); document.getElementById(id).classList.add('active'); }
+        function removeWall(k,d) { const r=roomGrid.get(k); if(r&&r.walls[d]){ r.group.remove(r.walls[d]); walls=walls.filter(x=>x!==r.walls[d]); collidables=collidables.filter(x=>x!==r.walls[d]); delete r.walls[d]; } }
+        function getOpposite(d) { return {N:'S',S:'N',E:'W',W:'E'}[d]; }
+        function createDoorFrame(g,d) { 
+            const f=new THREE.Group(); f.position.set(d.x*ROOM_SIZE/2,0,d.z*ROOM_SIZE/2); f.rotation.y=d.rot; 
+            const wp=(ROOM_SIZE-4)/2; 
+            const p1=new THREE.Mesh(new THREE.BoxGeometry(wp,WALL_HEIGHT,0.5), mats.wood); p1.position.set(-ROOM_SIZE/2+wp/2,WALL_HEIGHT/2,0);
+            const p2=p1.clone(); p2.position.set(ROOM_SIZE/2-wp/2,WALL_HEIGHT/2,0);
+            const l=new THREE.Mesh(new THREE.BoxGeometry(4,WALL_HEIGHT-4.5,0.5), mats.wood); l.position.set(0,WALL_HEIGHT-(WALL_HEIGHT-4.5)/2,0);
+            f.add(p1,p2,l); g.add(f);
+            collidables.push(p1, p2, l);
+        }
+        function generateTextTex(t) { const c=document.createElement('canvas'); c.width=512; c.height=128; const x=c.getContext('2d'); x.fillStyle='#111'; x.fillRect(0,0,512,128); x.strokeStyle='#d4af37'; x.lineWidth=5; x.strokeRect(2,2,508,124); x.font='bold 40px Arial'; x.fillStyle='#d4af37'; x.textAlign='center'; x.textBaseline='middle'; x.fillText(t,256,64); return new THREE.CanvasTexture(c); }
+        
+        function compressImage(f) { 
+            return new Promise(r=>{ 
+                const rd=new FileReader(); 
+                rd.onload=e=>{ 
+                    const i=new Image(); 
+                    i.onload=()=>{ 
+                        const c=document.createElement('canvas'); 
+                        let w=i.width, h=i.height; 
+                        if(w>1024){h*=1024/w;w=1024;} 
+                        c.width=w; c.height=h; 
+                        c.getContext('2d').drawImage(i,0,0,w,h); 
+                        r(c.toDataURL('image/jpeg',1.6)); 
+                    }; 
+                    i.src=e.target.result; 
+                }; 
+                rd.readAsDataURL(f); 
+            }); 
+        }
+
+        function dataURItoBlob(dataURI) {
+            const byteString = atob(dataURI.split(',')[1]);
+            const mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
+            const ab = new ArrayBuffer(byteString.length);
+            const ia = new Uint8Array(ab);
+            for (let i = 0; i < byteString.length; i++) {
+                ia[i] = byteString.charCodeAt(i);
+            }
+            return new Blob([ab], {type: mimeString});
+        }
+
+        function exportScene() { 
+            const rd=[]; roomGrid.forEach((v,k)=>{ const [x,z]=k.split(',').map(Number), t={}; for(const d in v.walls) if(v.walls[d].userData.textureID!=='wall_default') t[d]=v.walls[d].userData.textureID; rd.push({x,z,textures:t}); }); 
+            const ad=arts.map(m=>({
+                pos:m.position.toArray(),
+                rot:m.quaternion.toArray(),
+                scale: m.scale.toArray(), // SAVE SCALE
+                type:m.userData.type,
+                ratio:m.userData.ratio,
+                content:m.userData.content
+            })); 
+            return {rooms:rd,artData:ad}; 
+        }
+
+        function onHover(e) { 
+            if(controls.isLocked) return; 
+            if(isDrag && !state.isDraggingGizmo){ 
+                camera.rotation.y-=(e.clientX-lastM.x)*0.002; 
+                camera.rotation.x=Math.max(-1.5,Math.min(1.5,camera.rotation.x-(e.clientY-lastM.y)*0.002)); 
+                lastM={x:e.clientX,y:e.clientY}; 
+                return; 
+            } 
+            
+            // Si estamos usando el gizmo, no hacer raycasting normal
+            if(state.isDraggingGizmo) return;
+
+            const m=new THREE.Vector2((e.clientX/window.innerWidth)*2-1,-(e.clientY/window.innerHeight)*2+1); raycaster.setFromCamera(m,camera); walls.forEach(w=>w.material.emissive?w.material.emissive.setHex(0):null); document.getElementById('cursor-label').style.opacity=0; 
+            
+            if(state.mode==='decorate'){ 
+                if(state.subMode==='delete'){ 
+                    const h=raycaster.intersectObjects(arts); 
+                    if(h.length) setLabel("Borrar"); 
+                } 
+                else if(state.placement.active&&state.placement.texture){ 
+                    const h=raycaster.intersectObjects(walls); 
+                    if(h.length){ 
+                        if(!state.placement.ghost){ state.placement.ghost=new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({transparent:true,opacity:0.5,side:2})); scene.add(state.placement.ghost); } 
+                        const g=state.placement.ghost; g.visible=true; g.material.map=state.placement.texture; g.geometry=new THREE.PlaneGeometry(3,3/state.placement.ratio); 
+                        const n=h[0].face.normal.clone().transformDirection(h[0].object.matrixWorld).normalize(); 
+                        g.position.copy(h[0].point).add(n.clone().multiplyScalar(0.1)); 
+                        g.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),n); 
+                    } else if(state.placement.ghost) state.placement.ghost.visible=false; 
+                } 
+            } else if(state.mode==='paint'||state.mode==='build'){ 
+                const h=raycaster.intersectObjects(walls); 
+                if(h.length){ h[0].object.material.emissive.setHex(state.mode==='paint'?0x00ff00:0xffaa00); setLabel(state.mode==='paint'?"Pintar":"Expandir"); } 
+            } 
+        }
+
+        function onClick(e) { 
+            const m=new THREE.Vector2((e.clientX/window.innerWidth)*2-1,-(e.clientY/window.innerHeight)*2+1); 
+            raycaster.setFromCamera(m,camera); 
+            
+            if(state.mode==='decorate'){ 
+                // 1. Check for art selection (for resize)
+                if(state.subMode !== 'delete' && !state.placement.active) {
+                    const h = raycaster.intersectObjects(arts);
+                    if(h.length > 0) {
+                        transformControl.attach(h[0].object);
+                        return; // Stop further processing if we selected an object
+                    } else {
+                        // If clicked empty space/wall, detach unless we are placing
+                        transformControl.detach();
+                    }
+                }
+
+                if(state.subMode==='delete'){ 
+                    const h=raycaster.intersectObjects(arts); 
+                    if(h.length){ 
+                        transformControl.detach(); // Detach if deleting
+                        scene.remove(h[0].object); 
+                        arts=arts.filter(x=>x!==h[0].object); 
+                    } 
+                } else if(state.placement.active&&state.placement.ghost&&state.placement.ghost.visible){ 
+                    const g=state.placement.ghost, ms=g.clone(); ms.material=g.material.clone(); ms.material.opacity=1; ms.material.transparent=true; ms.userData={type:state.placement.type,ratio:state.placement.ratio,content:state.placement.contentData}; 
+                    if(state.placement.type==='image'){ const f=new THREE.Mesh(new THREE.BoxGeometry(ms.geometry.parameters.width+0.2,ms.geometry.parameters.height+0.2,0.05), new THREE.MeshStandardMaterial({color:0x111})); f.position.z=-0.03; ms.add(f); } 
+                    scene.add(ms); arts.push(ms); 
+                    
+                    // Stop placing after one click? Or keep active? 
+                    // Let's keep active for multiple placements, user can click mode to stop.
+                } 
+            } else if(state.mode==='paint'){ 
+                const h=raycaster.intersectObjects(walls); 
+                if(h.length){ h[0].object.material=mats[state.paintTexture].clone(); h[0].object.userData.textureID=state.paintTexture; } 
+            } else if(state.mode==='build'){ 
+                const h=raycaster.intersectObjects(walls); 
+                if(h.length){ const u=h[0].object.userData; createRoom(u.gx+u.dx, u.gz+u.dz); } 
+            } 
+        }
+        
+        function checkCollision(pos) {
+            const p = pos.clone(); p.y=1.5; 
+            const dirs = [new THREE.Vector3(1,0,0), new THREE.Vector3(-1,0,0), new THREE.Vector3(0,0,1), new THREE.Vector3(0,0,-1)];
+            for(let d of dirs) {
+                raycaster.set(p, d);
+                const hits = raycaster.intersectObjects(collidables, true);
+                if(hits.length > 0 && hits[0].distance < 1.5) return true;
+            }
+            return false;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate); 
+            const dt=clock.getDelta(), s=12;
+            if(camera.position.y < 3.0) camera.position.y = 3.0;
+            const oldPos = camera.position.clone();
+            if(keyState['KeyW']) controls.moveForward(s*dt); 
+            if(keyState['KeyS']) controls.moveForward(-s*dt); 
+            if(keyState['KeyA']) controls.moveRight(-s*dt); 
+            if(keyState['KeyD']) controls.moveRight(s*dt);
+            if(checkCollision(camera.position)) camera.position.copy(oldPos);
+            renderer.render(scene,camera); 
+        }
+    </script>
+</body>
+</html>
