@@ -519,6 +519,7 @@
                     style="display:block; padding:10px; text-align:center; border-radius:8px; cursor:pointer; background:rgba(255,255,255,0.1);">📂
                     Subir</label>
                 <input type="file" id="file-in" accept="image/*" style="display:none">
+                <button id="btn-place-img" style="margin-top:10px; display:none;">🎯 Colocar Cuadro</button>
             </div>
             <div id="opts-txt" style="display:none;"><input type="text" id="txt-in" placeholder="Texto..."><button
                     id="btn-gen-txt">Generar</button></div>
@@ -726,6 +727,12 @@
             walls = []; arts = []; collidables = []; floors = []; roomGrid.clear(); interactive3DModels = [];
             scene.children.forEach(c => { if (c.userData.isRoomGroup) scene.remove(c); });
             camera.position.set(0, 3, 0); camera.rotation.set(0, 0, 0);
+
+            // Reset image upload preview
+            document.getElementById('img-preview').src = '';
+            document.getElementById('img-preview').style.display = 'none';
+            document.getElementById('img-placeholder').style.display = 'block';
+            document.getElementById('btn-place-img').style.display = 'none';
         }
         function loadSceneData(d) {
             const rs = new Set(); d.rooms.forEach(r => rs.add(`${r.x},${r.z}`));
@@ -904,6 +911,7 @@
                     document.getElementById('img-preview').src = compressedB64;
                     document.getElementById('img-preview').style.display = 'block';
                     document.getElementById('img-placeholder').style.display = 'none';
+                    document.getElementById('btn-place-img').style.display = 'block';
                     const i = new Image(); i.src = compressedB64;
                     i.onload = () => {
                         const t = new THREE.Texture(i); t.needsUpdate = true; t.colorSpace = 'srgb';
@@ -930,6 +938,29 @@
             };
 
             document.getElementById('btn-gen-txt').onclick = () => { const t = document.getElementById('txt-in').value; if (t) { const tex = generateTextTex(t); state.placement = { active: true, texture: tex, ratio: 4, type: 'text', contentData: t, ghost: state.placement.ghost }; } };
+            document.getElementById('btn-place-img').onclick = () => {
+                const img = document.getElementById('img-preview');
+                if (img && img.style.display !== 'none' && img.src) {
+                    const i = new Image();
+                    i.crossOrigin = "Anonymous";
+                    i.src = img.src;
+                    i.onload = () => {
+                        const t = new THREE.Texture(i);
+                        t.needsUpdate = true;
+                        t.colorSpace = 'srgb';
+                        state.placement = {
+                            active: true,
+                            texture: t,
+                            ratio: i.width / i.height,
+                            type: 'image',
+                            contentData: state.placement.contentData || img.src,
+                            ghost: state.placement.ghost
+                        };
+                    };
+                } else {
+                    alert("Primero selecciona o sube una imagen");
+                }
+            };
             ['walk', 'decorate', 'resize', 'paint', 'build'].forEach(m => {
                 document.getElementById('dock-' + m).onclick = (e) => {
                     state.mode = m;

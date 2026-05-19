@@ -269,6 +269,8 @@
                 const w = 3; const h = w / a.ratio;
                 const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: 2 }));
                 mesh.position.fromArray(a.pos); mesh.quaternion.fromArray(a.rot);
+                const scale = a.scale || 1;
+                mesh.scale.set(scale, scale, 1);
                 if (a.type === 'image') { const f = new THREE.Mesh(new THREE.BoxGeometry(w + 0.2, h + 0.2, 0.05), new THREE.MeshStandardMaterial({ color: 0x111 })); f.position.z = -0.03; mesh.add(f); }
                 scene.add(mesh);
             });
