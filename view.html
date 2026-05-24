@@ -72,6 +72,12 @@
             border-radius: 8px;
             font-weight: 600;
             cursor: pointer;
+            transition: 0.3s;
+        }
+
+        #start-btn:hover {
+            background: #2563eb;
+            transform: translateY(-2px);
         }
 
         #instructions {
@@ -129,6 +135,12 @@
             color: white;
             cursor: pointer;
             z-index: 1001;
+            transition: 0.3s;
+        }
+
+        #close-iframe:hover {
+            color: #ef4444;
+            transform: scale(1.1);
         }
     </style>
     <script type="importmap">
@@ -154,7 +166,6 @@
         import * as THREE from 'three';
         import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
         import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
-        import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
         import { initializeApp } from 'firebase/app';
         import { getFirestore, doc, getDoc } from 'firebase/firestore';
 
@@ -164,10 +175,9 @@
         const ROOM_SIZE = 20; const WALL_HEIGHT = 7;
         let camera, scene, renderer, controls, clock; const keyState = {};
 
-        // Collision list
+        // Listas para colisiones e interacciones
         let collidables = [];
         let interactive3DModels = [];
-        let arcadeModel = null;
         const raycaster = new THREE.Raycaster();
 
         function loadTex(n, r = 1) { const t = new THREE.TextureLoader().load(ASSET_BASE + n); t.colorSpace = 'srgb'; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(r, r); return t; }
@@ -188,7 +198,9 @@
                 if (snap.exists()) {
                     const data = JSON.parse(snap.data().data); document.title = (snap.data().name || "Galería") + " - MuseuMaker";
                     init3D(data);
-                    document.getElementById('status-txt').innerText = "Listo"; document.getElementById('spin').style.display = 'none'; document.getElementById('start-btn').style.display = 'inline-block';
+                    document.getElementById('status-txt').innerText = "Listo"; 
+                    document.getElementById('spin').style.display = 'none'; 
+                    document.getElementById('start-btn').style.display = 'inline-block';
                 } else document.getElementById('status-txt').innerText = "No encontrado";
             } catch (e) { document.getElementById('status-txt').innerText = "Error"; }
         }
@@ -209,12 +221,28 @@
                 const f = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_SIZE, ROOM_SIZE), mats.floor); f.rotation.x = -Math.PI / 2; group.add(f);
                 const c = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_SIZE, ROOM_SIZE), new THREE.MeshBasicMaterial({ color: 0x222 })); c.position.y = WALL_HEIGHT; c.rotation.x = Math.PI / 2; group.add(c);
                 const dirs = [{ id: 'N', x: 0, z: -1, rot: 0 }, { id: 'S', x: 0, z: 1, rot: Math.PI }, { id: 'E', x: 1, z: 0, rot: -Math.PI / 2 }, { id: 'W', x: -1, z: 0, rot: Math.PI / 2 }];
+                
                 dirs.forEach(d => {
                     const nKey = `${r.x + d.x},${r.z + d.z}`;
-                    if (roomSet.has(nKey)) createDoorFrame(group, d);
-                    else {
+                    if (roomSet.has(nKey)) {
+                        createDoorFrame(group, d);
+                    } else {
                         let mat = mats.wall_default;
-                        if (r.textures && r.textures[d.id] && mats[r.textures[d.id]]) mat = mats[r.textures[d.id]];
+                        if (r.textures && r.textures[d.id]) {
+                            let tid = r.textures[d.id];
+                            if (tid.startsWith('custom|')) {
+                                const customUrl = tid.split('|')[1];
+                                const i = new Image(); i.crossOrigin = "Anonymous"; i.src = customUrl;
+                                const tex = new THREE.Texture(i);
+                                i.onload = () => { tex.needsUpdate = true; tex.colorSpace = 'srgb'; };
+                                mat = new THREE.MeshStandardMaterial({ map: tex, side: 2 });
+                            } else if (tid.startsWith('color|')) {
+                                const col = tid.split('|')[1];
+                                mat = new THREE.MeshStandardMaterial({ color: col, side: 2 });
+                            } else if (mats[tid]) {
+                                mat = mats[tid].clone();
+                            }
+                        }
                         const w = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_SIZE, WALL_HEIGHT), mat);
                         w.position.set(d.x * ROOM_SIZE / 2, WALL_HEIGHT / 2, d.z * ROOM_SIZE / 2); w.rotation.y = d.rot; group.add(w);
                         collidables.push(w);
@@ -224,43 +252,59 @@
             });
 
             data.artData.forEach(a => {
-                if (a.type === 'arcade') {
-                    const loadArcade = () => {
-                        if (!arcadeModel) {
-                            setTimeout(loadArcade, 100);
-                            return;
-                        }
-                        const m = arcadeModel.clone();
-                        m.position.fromArray(a.pos);
-                        m.quaternion.fromArray(a.rot);
-
-                        m.traverse(c => {
-                            if (c.isMesh) {
-                                if (c.material) c.material = c.material.clone();
-                                c.castShadow = true;
-                                c.receiveShadow = true;
-                                c.userData.isInteractive3D = true;
-                                c.userData.url = a.content;
+                // MODELOS 3D
+                if (a.type === 'object3d') {
+                    const loader = new OBJLoader();
+                    const obj = loader.parse(a.content);
+                    
+                    obj.traverse((child) => {
+                        if (child.isMesh) {
+                            child.material = new THREE.MeshStandardMaterial({ 
+                                color: a.color ? new THREE.Color(a.color) : 0xcccccc, 
+                                roughness: 0.5 
+                            });
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                            
+                            // Si tiene interactividad (ej. legacy de arcade o nuevo prop link)
+                            if (a.url) {
+                                child.userData.isInteractive3D = true;
+                                child.userData.url = a.url;
                             }
-                        });
+                        }
+                    });
+                    
+                    // Normalizar centro y base (igual que en index.html)
+                    const box2 = new THREE.Box3().setFromObject(obj);
+                    const center = box2.getCenter(new THREE.Vector3());
+                    obj.position.x -= center.x;
+                    obj.position.z -= center.z;
+                    obj.position.y -= box2.min.y;
 
-                        m.userData = {
-                            type: 'arcade',
-                            content: a.content,
-                            url: a.content,
-                            isInteractive3D: true
-                        };
+                    const wrapper = new THREE.Group();
+                    wrapper.add(obj);
 
-                        scene.add(m);
-                        interactive3DModels.push(m);
-                    };
-                    loadArcade();
-                    return;
+                    wrapper.position.fromArray(a.pos);
+                    wrapper.quaternion.fromArray(a.rot);
+                    const scale = a.scale || 1;
+                    wrapper.scale.set(scale, scale, scale);
+
+                    // Almacenar interactividad en el parentesi por si acaso
+                    if (a.url) {
+                        wrapper.userData = { isInteractive3D: true, url: a.url };
+                        interactive3DModels.push(wrapper);
+                    }
+
+                    scene.add(wrapper);
+                    return; // Fin del bloque object3d, pasamos al siguiente artData
                 }
 
+                // CUADROS Y TEXTOS
                 let tex;
-                if (a.type === 'image') { const img = new Image(); img.crossOrigin = "Anonymous"; img.src = a.content; tex = new THREE.Texture(img); img.onload = () => { tex.needsUpdate = true; tex.colorSpace = 'srgb'; }; }
-                else {
+                if (a.type === 'image') { 
+                    const img = new Image(); img.crossOrigin = "Anonymous"; img.src = a.content; tex = new THREE.Texture(img); 
+                    img.onload = () => { tex.needsUpdate = true; tex.colorSpace = 'srgb'; }; 
+                } else {
                     const c = document.createElement('canvas'); c.width = 512; c.height = 128; const x = c.getContext('2d');
                     x.fillStyle = '#111'; x.fillRect(0, 0, 512, 128); x.strokeStyle = '#d4af37'; x.lineWidth = 5; x.strokeRect(2, 2, 508, 124);
                     x.font = 'bold 40px Arial'; x.fillStyle = '#d4af37'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(a.content, 256, 64);
@@ -271,11 +315,13 @@
                 mesh.position.fromArray(a.pos); mesh.quaternion.fromArray(a.rot);
                 const scale = a.scale || 1;
                 mesh.scale.set(scale, scale, 1);
-                if (a.type === 'image') { const f = new THREE.Mesh(new THREE.BoxGeometry(w + 0.2, h + 0.2, 0.05), new THREE.MeshStandardMaterial({ color: 0x111 })); f.position.z = -0.03; mesh.add(f); }
+                
+                if (a.type === 'image') { 
+                    const f = new THREE.Mesh(new THREE.BoxGeometry(w + 0.2, h + 0.2, 0.05), new THREE.MeshStandardMaterial({ color: 0x111 })); 
+                    f.position.z = -0.03; mesh.add(f); 
+                }
                 scene.add(mesh);
             });
-
-            preloadArcadeModel();
 
             renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setSize(window.innerWidth, window.innerHeight); document.body.appendChild(renderer.domElement);
             controls = new PointerLockControls(camera, document.body); clock = new THREE.Clock();
@@ -283,7 +329,7 @@
             document.addEventListener('keydown', e => keyState[e.code] = true); document.addEventListener('keyup', e => keyState[e.code] = false);
             document.getElementById('start-btn').onclick = () => { document.getElementById('loading-screen').style.display = 'none'; controls.lock(); };
 
-            // Interactividad con modelos 3D
+            // Interactividad con modelos 3D que puedan tener URL
             document.addEventListener('mousemove', (e) => {
                 if (controls.isLocked) return;
                 const mouse = new THREE.Vector2((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
@@ -334,32 +380,8 @@
             animate();
         }
 
-        function preloadArcadeModel() {
-            const mtlLoader = new MTLLoader();
-            mtlLoader.load('obj.mtl', (materials) => {
-                materials.preload();
-                const objLoader = new OBJLoader();
-                objLoader.setMaterials(materials);
-                objLoader.load('tinker.obj', (object) => {
-                    object.rotation.set(-Math.PI / 2, 0, 0);
-
-                    const wrapper = new THREE.Group();
-                    wrapper.add(object);
-                    wrapper.scale.set(0.05, 0.05, 0.05);
-
-                    wrapper.traverse((child) => {
-                        if (child.isMesh) {
-                            child.castShadow = true;
-                            child.receiveShadow = true;
-                        }
-                    });
-                    arcadeModel = wrapper;
-                    console.log('Modelo Arcade cargado para visor.');
-                });
-            });
-        }
-
-        function closeIframeModal() {
+        // Exponer la función al contexto global para el botón de cerrar
+        window.closeIframeModal = function() {
             document.getElementById('iframe-modal').style.display = 'none';
             document.getElementById('iframe-content').src = '';
         }
@@ -367,11 +389,11 @@
         function createDoorFrame(group, d) {
             const fr = new THREE.Group(); fr.position.set(d.x * ROOM_SIZE / 2, 0, d.z * ROOM_SIZE / 2); fr.rotation.y = d.rot;
             const wp = (ROOM_SIZE - 4) / 2;
-            // USA CAJAS (BOX) PARA TENER SOLIDEZ
             const p1 = new THREE.Mesh(new THREE.BoxGeometry(wp, WALL_HEIGHT, 0.5), mats.wood); p1.position.set(-ROOM_SIZE / 2 + wp / 2, WALL_HEIGHT / 2, 0);
             const p2 = p1.clone(); p2.position.set(ROOM_SIZE / 2 - wp / 2, WALL_HEIGHT / 2, 0);
             const lint = new THREE.Mesh(new THREE.BoxGeometry(4, WALL_HEIGHT - 4.5, 0.5), mats.wood); lint.position.set(0, WALL_HEIGHT - (WALL_HEIGHT - 4.5) / 2, 0);
             fr.add(p1, p2, lint); group.add(fr);
+            
             // Añadir a colisiones
             collidables.push(p1, p2, lint);
         }
